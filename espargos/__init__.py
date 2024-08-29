@@ -8,9 +8,9 @@ from .pool import Pool
 import logging
 import sys
 
-__version__ = "0.0.1"
+__version__ = "0.1.1"
 __title__ = "pyespargos"
-__description__ = "ESPARGOS client library"
+__description__ = "Python library for working with the ESPARGOS WiFi channel sounder"
 __uri__ = "http://github.com/ESPARGOS/pyespargos"
 
 class Logger:
