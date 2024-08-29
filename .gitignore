@@ -1,0 +1,17 @@
+__pycache__/
+docs/_build
+*.prof
+.vscode
+
+# setuptools-related
+*.egg
+*.egg-info/
+dist/
+build/
+*.egg-info/
+eggs/
+parts/
+var/
+wheels/
+.scratch/
+*.egg-info/

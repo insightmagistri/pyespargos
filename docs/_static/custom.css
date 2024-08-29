@@ -1,0 +1,14 @@
+body {
+	--themecolor:#227b3d;
+}
+
+.wy-side-nav-search input[type="text"] {
+	border-color: var(--themecolor);
+}
+
+.wy-side-nav-search {
+	background-color: var(--themecolor);
+}
+.wy-nav-top {
+	background-color: var(--themecolor);
+}
