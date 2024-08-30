@@ -14,6 +14,9 @@ __description__ = "Python library for working with the ESPARGOS WiFi channel sou
 __uri__ = "http://github.com/ESPARGOS/pyespargos"
 
 class Logger:
+    """
+    Logger class for pyespargos. This class is a singleton and should be used to modify the logging level of the library.
+    """
     logger = logging.getLogger("pyespargos")
     stderrHandler = logging.StreamHandler(sys.stderr)
     stderrHandler.setFormatter(logging.Formatter("[%(name)-20s] %(message)s"))
@@ -22,8 +25,14 @@ class Logger:
 
     @classmethod
     def get_level(cls):
+        """
+        Returns the current logging level of the logger.
+        """
         return cls.log.getEffectiveLevel()
 
     @classmethod
     def set_level(cls, level):
+        """
+        Sets the logging level of the logger.
+        """
         cls.log.setLevel(level=level)
