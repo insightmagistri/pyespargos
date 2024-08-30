@@ -47,9 +47,13 @@ The following demos are provided in the `demos` folder of this repository:
 Unless otherwise noted, the demos connect to exactly one ESPARGOS antenna array with 2 &times; 4 antennas.
 
 ## Installation
-* Run the setuptools-based installation script:
+* Install `pyespargos` with `pip`:
 ```bash
-sudo python3 setup.py install
+pip install .
+```
+* To install `pyespargos` system-wide (as opposed to inside a virtual environment), you may need to use
+```bash
+sudo pip install . --break-system-packages
 ```
 * Import the `espargos` package in your Python application. Use this minimal sample code to get started:
 ```python
@@ -69,6 +73,9 @@ time.sleep(4)
 
 csi_ht40 = backlog.get_ht40()
 print("Received CSI: ", csi_ht40)
+
+backlog.stop()
+pool.stop()
 ```
 * Take a look at the demo applications for advanced usage
 * To run the demos that come with *pyespargos*, you may need to install additional dependencies that are not listed in `requirements.txt` (most notably, PyQt6-related packages)

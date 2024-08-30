@@ -57,7 +57,7 @@ class EspargosDemoCombinedArray(PyQt6.QtWidgets.QApplication):
 		# Set up ESPARGOS pool and backlog
 		self.pool = espargos.Pool([espargos.Board(board["host"]) for board in self.conf["boards"].values()])
 		self.pool.start()
-		self.pool.calibrate(duration = 4, per_board = False, cable_lengths = cable_lengths, cable_velocity_factors=cable_velocity_factors)
+		self.pool.calibrate(duration = 4, per_board = False, cable_lengths = cable_lengths, cable_velocity_factors = cable_velocity_factors)
 		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog)
 		self.backlog.start()
 

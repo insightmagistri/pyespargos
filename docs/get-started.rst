@@ -94,6 +94,9 @@ The application code can query the backlog whenever it needs recent CSI.
   csi_ht40 = backlog.get_ht40()
   print("Received CSI: ", csi_ht40)
 
+  backlog.stop()
+  pool.stop()
+
 Advanced Usage
 --------------
 Check out the source code of our `demo applications <https://github.com/ESPARGOS/pyespargos/tree/main/demos>`_ to learn how to use *pyespargos* in a real-time application.

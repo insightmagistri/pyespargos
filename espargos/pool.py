@@ -141,6 +141,9 @@ class CSICalibration(object):
 
         # Account for additional board-specific phase offsets due to different feeder cable lengths in a multi-board antenna array system
         if board_cable_lengths is not None:
+            assert(board_cable_vfs is not None)
+            board_cable_lengths = np.asarray(board_cable_lengths)
+            board_cable_vfs = np.asarray(board_cable_vfs)
             subcarrier_cable_wavelengths = util.get_cable_wavelength(util.get_frequencies_ht40(channel_primary, channel_secondary), board_cable_vfs).astype(calibration_values_ht40.dtype)
             board_phase_offsets = np.exp(-1.0j * 2 * np.pi * board_cable_lengths[:,np.newaxis] / subcarrier_cable_wavelengths)
             prop_calib = np.einsum("bs,ras->bras", board_phase_offsets, prop_calib_each_board)
