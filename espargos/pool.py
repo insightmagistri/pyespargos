@@ -346,7 +346,7 @@ class CSICalibration(object):
         #self.computed_stos_store.append(computed_stos)
 
         subcarrier_range = np.arange(-values.shape[-1] // 2, values.shape[-1] // 2)[np.newaxis,np.newaxis,np.newaxis,:]
-        sto_delay_correction = np.exp(-1.0j * 2 * np.pi * delay[:,:,:,np.newaxis] * 40e6 * subcarrier_range / values.shape[-1])
+        sto_delay_correction = np.exp(-1.0j * 2 * np.pi * delay[:,:,:,np.newaxis] * constants.WIFI_SUBCARRIER_SPACING * subcarrier_range)
 
         #csi = np.einsum("bras,bras->bras", values, self.calibration_values_ht40)
         csi = np.einsum("bras,bras,bras->bras", values, sto_delay_correction, self.calibration_values_ht40)
