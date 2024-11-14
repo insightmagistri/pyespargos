@@ -277,8 +277,9 @@ class CSICalibration(object):
         wavelengths = util.get_calib_trace_wavelength(self.frequencies_ht40).astype(calibration_values_ht40.dtype)
         tracelengths = np.asarray(constants.CALIB_TRACE_LENGTH, dtype = calibration_values_ht40.dtype)# - np.asarray(constants.CALIB_TRACE_EMPIRICAL_ERROR)
         prop_calib_each_board = np.exp(-1.0j * 2 * np.pi * tracelengths[:,:,np.newaxis] / wavelengths[np.newaxis, np.newaxis])
+        prop_delay_each_board = np.asarray(constants.CALIB_TRACE_LENGTH) / np.asarray(constants.CALIB_TRACE_GROUP_VELOCITY)
 
-        # TODO: Account for board-specific time offsets
+        # TODO: Account for board-specific time offsets in timestamp_calibration_values
 
         # Account for additional board-specific phase offsets due to different feeder cable lengths in a multi-board antenna array system
         if board_cable_lengths is not None:
@@ -294,7 +295,7 @@ class CSICalibration(object):
 
         self.calibration_values_ht40 = np.exp(-1.0j * np.angle(coeffs_without_propdelay))
         self.calibration_values_ht40_flat = np.sum(np.exp(-1.0j * np.angle(coeffs_without_propdelay)), axis = -1)
-        self.timestamp_calibration_values = timestamp_calibration_values
+        self.timestamp_calibration_values = timestamp_calibration_values - prop_delay_each_board[np.newaxis,:,:]
 
     def apply_ht40(self, values, sensor_timestamps):
         """

@@ -6,6 +6,9 @@ ANTENNAS_PER_ROW = 4
 ROWS_PER_BOARD = 2
 "Number of rows / SPI controllers on the board"
 
+SPEED_OF_LIGHT = 299792458
+"Speed of light in a vacuum"
+
 ANTENNAS_PER_BOARD = ANTENNAS_PER_ROW * ROWS_PER_BOARD
 "Number of antennas on one board"
 
@@ -35,8 +38,8 @@ CALIB_TRACE_HEIGHT = 0.119
 CALIB_TRACE_EFFECTIVE_DIELECTRIC_CONSTANT = (CALIB_TRACE_DIELECTRIC_CONSTANT + 1) / 2 + (CALIB_TRACE_DIELECTRIC_CONSTANT - 1) / 2 * (1 + 12 * (CALIB_TRACE_HEIGHT/CALIB_TRACE_WIDTH))**(-1/2)
 "Effective dielectric constant of the calibration trace"
 
-SPEED_OF_LIGHT = 299792458
-"Speed of light in a vacuum"
+CALIB_TRACE_GROUP_VELOCITY = SPEED_OF_LIGHT / CALIB_TRACE_EFFECTIVE_DIELECTRIC_CONSTANT**0.5
+"Group velocity of signal on the calibration trace"
 
 WIFI_CHANNEL1_FREQUENCY = 2.412e9
 "Frequency of channel 1 in 2.4 GHz WiFi"

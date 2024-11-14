@@ -85,7 +85,7 @@ def get_calib_trace_wavelength(frequencies):
 	:param frequencies: The frequencies of the subcarriers, in Hz, NumPy array.
 	:return: The wavelengths of the subcarriers, in meters, NumPy array.
 	"""
-	return constants.SPEED_OF_LIGHT / (frequencies * np.sqrt(constants.CALIB_TRACE_EFFECTIVE_DIELECTRIC_CONSTANT))
+	return constants.CALIB_TRACE_GROUP_VELOCITY / frequencies
 
 def get_cable_wavelength(frequencies, velocity_factors):
 	"""
