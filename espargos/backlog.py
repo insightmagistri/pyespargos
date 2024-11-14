@@ -44,12 +44,12 @@ class CSIBacklog(object):
             self.storage_timestamps[self.head] = sensor_timestamps
 
             # Store HT40 CSI if applicable
-            sampling_timestamps = clustered_csi.get_sampling_timestamps()
+            sensor_timestamps_raw = clustered_csi.get_sensor_timestamps()
             if self.enable_ht40 and clustered_csi.is_ht40():
                 csi_ht40 = clustered_csi.deserialize_csi_ht40()
                 if self.calibrate:
                     assert(self.pool.get_calibration() is not None)
-                    csi_ht40 = self.pool.get_calibration().apply_ht40(csi_ht40, sampling_timestamps)
+                    csi_ht40 = self.pool.get_calibration().apply_ht40(csi_ht40, sensor_timestamps_raw)
 
                 self.storage_ht40[self.head] = csi_ht40
 
