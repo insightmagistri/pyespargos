@@ -23,7 +23,7 @@ class CSIBacklog(object):
         self.calibrate = calibrate
 
         self.storage_ht40 = np.zeros((size,) + self.pool.get_shape() + ((csi.csi_buf_t.htltf_lower.size + csi.HT40_GAP_SUBCARRIERS * 2 + csi.csi_buf_t.htltf_higher.size) // 2,), dtype = np.complex64)
-        self.storage_timestamps = np.zeros(size)
+        self.storage_timestamps = np.zeros((size,) + self.pool.get_shape(), dtype = np.float128)
         self.storage_rssi = np.zeros((size,) + self.pool.get_shape(), dtype = np.float32)
         self.head = 0
         self.latest = None
@@ -41,14 +41,15 @@ class CSIBacklog(object):
             if self.calibrate:
                 assert(self.pool.get_calibration() is not None)
                 sensor_timestamps = self.pool.get_calibration().apply_timestamps(sensor_timestamps)
-            self.storage_timestamps[self.head] = np.mean(sensor_timestamps)
+            self.storage_timestamps[self.head] = sensor_timestamps
 
             # Store HT40 CSI if applicable
+            sampling_timestamps = clustered_csi.get_sampling_timestamps()
             if self.enable_ht40 and clustered_csi.is_ht40():
                 csi_ht40 = clustered_csi.deserialize_csi_ht40()
                 if self.calibrate:
                     assert(self.pool.get_calibration() is not None)
-                    csi_ht40 = self.pool.get_calibration().apply_ht40(csi_ht40)
+                    csi_ht40 = self.pool.get_calibration().apply_ht40(csi_ht40, sampling_timestamps)
 
                 self.storage_ht40[self.head] = csi_ht40
 
@@ -92,22 +93,22 @@ class CSIBacklog(object):
 
     def get_timestamps(self):
         """
-        Retrieve packet timestamps from the ringbuffer
+        Retrieve packet timestamps for all antennas from the ringbuffer
 
-        :return: Timestamps, oldest first
+        :return: Timestamps, oldest first, shape (n_packets, n_boards, constants.ROWS_PER_BOARD, constants.ANTENNAS_PER_ROW)
         """
         return np.roll(self.storage_timestamps, -self.head, axis = 0)[-self.filllevel:]
 
     def get_latest_timestamp(self):
         """
-        Retrieve the timestamp of the most recent packet in the ringbuffer
+        Retrieve the mean (over all antennas) timestamp of the most recent packet in the ringbuffer
 
-        :return: Timestamp of the most recent packet
+        :return: Timestamp of the most recent packet, scalar
         """
         if self.latest is None:
             return None
 
-        return self.storage_timestamps[self.latest]
+        return np.mean(self.storage_timestamps[self.latest])
 
     def nonempty(self):
         """

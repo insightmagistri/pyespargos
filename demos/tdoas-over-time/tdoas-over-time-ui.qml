@@ -10,7 +10,7 @@ ApplicationWindow {
 	minimumHeight: 500
 
 	color: "#333333"
-	title: "Received Phases over Time"
+	title: "Perceived TDOAs over Time"
 
 	// Tab20 color cycle reordered: https://github.com/matplotlib/matplotlib/blob/main/lib/matplotlib/_cm.py#L1293
 	property var colorCycle: ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf", "#aec7e8", "#ffbb78", "#98df8a", "#ff9896", "#c5b0d5", "#c49c94", "#f7b6d2", "#c7c7c7", "#dbdb8d", "#9edae5"]
@@ -29,7 +29,7 @@ ApplicationWindow {
 			Text {
 				Layout.alignment: Qt.AlignCenter
 
-				text: "Received Phases over Time"
+				text: "Time Difference of Arrival over Time"
 				color: "#ffffff"
 				font.pixelSize: Math.max(22, window.width / 60)
 				horizontalAlignment: Qt.AlignCenter
@@ -40,7 +40,7 @@ ApplicationWindow {
 			ChartView {
 				Layout.alignment: Qt.AlignCenter
 
-				id: calibrationPhasesOverTime
+				id: tdoasOverTime
 				legend.visible: false
 				Layout.fillWidth: true
 				Layout.fillHeight: true
@@ -53,11 +53,11 @@ ApplicationWindow {
 
 				axes: [
 					ValueAxis {
-						id: calibrationPhasesOverTimeXAxis
+						id: tdoasOverTimeXAxis
 
 						min: 0
 						max: 20
-						titleText: "<font color=\"#e0e0e0\">Time [s]</font>"
+						titleText: "<font color=\"#e0e0e0\">Mean RX Time [s]</font>"
 						titleFont.bold: false
 						gridLineColor: "#c0c0c0"
 						tickInterval: 5
@@ -65,22 +65,24 @@ ApplicationWindow {
 						labelsColor: "#e0e0e0"
 					},
 					ValueAxis {
-						id: calibrationPhasesOverTimeYAxis
+						id: tdoasOverTimeYAxis
 
-						min: -Math.PI
-						max: Math.PI
-						titleText: "<font color=\"#e0e0e0\">Phase Difference [rad]</font>"
+						min: -50
+						max: 50
+						titleText: "<font color=\"#e0e0e0\">Time of Arrival Difference [ns]</font>"
 						titleFont.bold: false
 						gridLineColor: "#c0c0c0"
-						tickInterval: 1
+						tickInterval: 5
 						tickType: ValueAxis.TicksDynamic
 						labelsColor: "#e0e0e0"
 					}
 				]
 
 				Component.onCompleted : {
-						for (let ant = 0; ant < backend.sensorCount; ++ant) {
-							let phaseSeries = calibrationPhasesOverTime.createSeries(ChartView.SeriesTypeLine, "tx-" + ant, calibrationPhasesOverTimeXAxis, calibrationPhasesOverTimeYAxis)
+						let antennas = backend.sensorCount
+
+						for (let ant = 0; ant < antennas; ++ant) {
+							let phaseSeries = tdoasOverTime.createSeries(ChartView.SeriesTypeLine, "tx-" + ant, tdoasOverTimeXAxis, tdoasOverTimeYAxis)
 							phaseSeries.pointsVisible = false
 							phaseSeries.color = colorCycle[ant % colorCycle.length]
 							phaseSeries.useOpenGL = true
@@ -92,15 +94,15 @@ ApplicationWindow {
 					running: true
 					repeat: true
 					onTriggered: {
-						for (const elem of calibrationPhasesOverTime.newDataBacklog) {
-							for (let ant = 0; ant < calibrationPhasesOverTime.count; ++ant)
-								calibrationPhasesOverTime.series(ant).append(elem.time, elem.phases[ant]);
+						for (const elem of tdoasOverTime.newDataBacklog) {
+							for (let ant = 0; ant < tdoasOverTime.count; ++ant)
+								tdoasOverTime.series(ant).append(elem.time, elem.tdoas[ant]);
 
-							calibrationPhasesOverTimeXAxis.max = elem.time
-							calibrationPhasesOverTimeXAxis.min = elem.time - backend.maxCSIAge
+							tdoasOverTimeXAxis.max = elem.time
+							tdoasOverTimeXAxis.min = elem.time - backend.maxCSIAge
 						}
 
-						calibrationPhasesOverTime.newDataBacklog = []
+						tdoasOverTime.newDataBacklog = []
 					}
 				}
 
@@ -110,8 +112,8 @@ ApplicationWindow {
 					repeat: true
 					onTriggered: {
 						// Count and delete series points which are too old
-						for (let ant = 0; ant < calibrationPhasesOverTime.count; ++ant) {
-							let s = calibrationPhasesOverTime.series(ant);
+						for (let ant = 0; ant < tdoasOverTime.count; ++ant) {
+							let s = tdoasOverTime.series(ant);
 							if (s.count > 2) {
 								let toRemoveCount = 0;
 								let now = s.at(s.count - 1).x;
@@ -128,10 +130,10 @@ ApplicationWindow {
 				Connections {
 					target: backend
 
-					function onUpdatePhases(time, phases) {
-						calibrationPhasesOverTime.newDataBacklog.push({
+					function onUpdateTDOAs(time, tdoas) {
+						tdoasOverTime.newDataBacklog.push({
 							"time" : time,
-							"phases" : phases
+							"tdoas" : tdoas
 						})
 					}
 				}
