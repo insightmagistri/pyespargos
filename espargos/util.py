@@ -219,13 +219,14 @@ def fdomain_to_tdomain_pdp_music(csi_fdomain, source_count = None, chunksize = 3
 
 	return delays_taps, P_music
 
-def estimate_toas_rootmusic(csi_fdomain, max_source_count = 2, chunksize = 36):
+def estimate_toas_rootmusic(csi_fdomain, max_source_count = 2, chunksize = 36, per_board_average = False):
 	"""
 	Estimate the time of arrivals (ToAs) of the LoS paths using the root-MUSIC algorithm.
 
 	:param csi_fdomain: The frequency-domain CSI data. Complex-valued NumPy array with shape (datapoints, arrays, rows, columns, subcarriers).
 	:param max_source_count: The maximum number of sources to estimate. The number of sources is determined using the Rissanen MDL criterion, but this parameter can be used to limit the number of sources.
 	:param chunksize: The size of the chunks to use for the covariance matrix computation.
+	:param per_board_average: If True, compute the average ToA over all antennas per board. If False, return the ToAs for each antenna separately.
 	:return: The estimated ToAs of the LoS paths, in seconds, NumPy array of shape :code:`(boardcount, constants.ROWS_PER_BOARD, constants.ANTENNAS_PER_ROW)`.
 	"""
 	# Compute the covariance matrix R
@@ -234,7 +235,13 @@ def estimate_toas_rootmusic(csi_fdomain, max_source_count = 2, chunksize = 36):
 	padding = (csi_fdomain.shape[-1] - chunkcount * chunksize) // 2
 
 	csi_chunked = np.reshape(csi_fdomain[..., padding:padding + chunkcount * chunksize], csi_fdomain.shape[:-1] + (chunkcount, chunksize), order = "C")
-	R = 1 / csi_chunked.shape[0] * np.einsum("dbrmci,dbrmcj->brmij", csi_chunked, np.conj(csi_chunked))
+
+	if per_board_average:
+		# Compute R per-board, but add dummy dimensions for row and column
+		R = 1 / (csi_chunked.shape[0] * csi_chunked.shape[2] * csi_chunked.shape[3]) * np.einsum("dbrmci,dbrmcj->bij", csi_chunked, np.conj(csi_chunked))
+		R = R[:,np.newaxis,np.newaxis,:,:]
+	else:
+		R = 1 / csi_chunked.shape[0] * np.einsum("dbrmci,dbrmcj->brmij", csi_chunked, np.conj(csi_chunked))
 
 	# Use forward–backward correlation matrix (FBCM)
 	R = (R + np.flip(np.conj(R), axis = (3, 4))) / 2
@@ -284,5 +291,9 @@ def estimate_toas_rootmusic(csi_fdomain, max_source_count = 2, chunksize = 36):
 				# Out of the strongest 2 paths (or only strongest, if only one source exists), pick the earliest one
 				if len(source_delays) > 0:
 					toas_by_antenna[array,row,col] = np.min(source_delays[:min(antenna_source_count, 2)])
+
+	# If per-board averaging is enabled, remove dummy dimensions
+	if per_board_average:
+		toas_by_antenna = toas_by_antenna[:,0,0]
 
 	return toas_by_antenna

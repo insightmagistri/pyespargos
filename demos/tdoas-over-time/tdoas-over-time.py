@@ -28,7 +28,8 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("hosts", type = str, help = "Comma-separated list of host addresses (IP or hostname) of ESPARGOS controllers")
 		parser.add_argument("-b", "--backlog", type = int, default = 20, help = "Number of CSI datapoints to average over in backlog")
 		parser.add_argument("-m", "--music", default = False, help = "Use root-MUSIC algorithm to compute more precise ToAs of LoS paths", action = "store_true")
-		parser.add_argument("-a", "--maxage", type = float, default = 10, help = "Maximum age of CSI datapoints before they are cleared")
+		parser.add_argument("-a", "--average", default = False, help = "Average TDoAs over all antennas in array", action = "store_true")
+		parser.add_argument("-c", "--maxage", type = float, default = 10, help = "Maximum age of CSI datapoints before they are cleared")
 		self.args = parser.parse_args()
 
 		# Set up ESPARGOS pool and backlog
@@ -69,9 +70,10 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 			csi_interp_ht40 = espargos.util.csi_interp_iterative_by_array(csi_backlog_ht40, iterations = 5)
 
 			if self.args.music:
-				tdoas_ns = espargos.util.estimate_toas_rootmusic(csi_backlog_ht40) * 1e9
+				tdoas_ns = espargos.util.estimate_toas_rootmusic(csi_backlog_ht40, per_board_average = self.args.average) * 1e9
 			else:
-				tdoas_ns = np.angle(np.sum(csi_interp_ht40[...,1:] * np.conj(csi_interp_ht40[...,:-1]), axis = -1)) / (2 * np.pi) / espargos.constants.WIFI_SUBCARRIER_SPACING * 1e9
+				sum_axis = -1 if not self.args.average else (1, 2, 3)
+				tdoas_ns = np.angle(np.sum(csi_interp_ht40[...,1:] * np.conj(csi_interp_ht40[...,:-1]), axis = sum_axis)) / (2 * np.pi) / espargos.constants.WIFI_SUBCARRIER_SPACING * 1e9
 
 			mean_rx_timestamp = self.backlog.get_latest_timestamp() - self.startTimestamp
 
@@ -88,7 +90,7 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 
 	@PyQt6.QtCore.pyqtProperty(float, constant=True)
 	def sensorCount(self):
-		return np.prod(self.pool.get_shape())
+		return np.prod(self.pool.get_shape()) if not self.args.average else self.pool.get_shape()[0]
 
 app = EspargosDemoTDOAOverTime(sys.argv)
 sys.exit(app.exec())
