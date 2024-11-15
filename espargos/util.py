@@ -135,7 +135,7 @@ def shift_to_firstpeak(csi_datapoints, max_delay_taps = 3, search_resolution = 4
 
 	return shift_to_firstpeak * csi_datapoints
 
-def fdomain_to_tdomain_pdp_mvdr(csi_fdomain, chunksize = 50, tap_min = -7, tap_max = 7, resolution = 200):
+def fdomain_to_tdomain_pdp_mvdr(csi_fdomain, chunksize = 36, tap_min = -7, tap_max = 7, resolution = 200):
 	"""
 	Convert frequency-domain CSI data to a time-domain power delay profile (PDP) using the MVDR beamformer.
 
@@ -151,6 +151,7 @@ def fdomain_to_tdomain_pdp_mvdr(csi_fdomain, chunksize = 50, tap_min = -7, tap_m
 	R = 1 / csi_chunked.shape[0] * np.einsum("dbrmci,dbrmcj->brmij", csi_chunked, np.conj(csi_chunked))
 
 	delays_taps = np.linspace(tap_min, tap_max, resolution)
+	# TODO: get rid of magic constant 128
 	steering_vectors = np.exp(-1.0j * 2 * np.pi * np.outer(np.arange(R.shape[-1]), delays_taps / 128))
 
 	R = (R + np.flip(np.conj(R), axis = (3, 4))) / 2
@@ -166,7 +167,7 @@ def fdomain_to_tdomain_pdp_mvdr(csi_fdomain, chunksize = 50, tap_min = -7, tap_m
 
 	return delays_taps, P_mvdr
 
-def fdomain_to_tdomain_pdp_music(csi_fdomain, source_count = None, chunksize = 50, tap_min = -7, tap_max = 7, resolution = 200):
+def fdomain_to_tdomain_pdp_music(csi_fdomain, source_count = None, chunksize = 36, tap_min = -7, tap_max = 7, resolution = 200):
 	"""
 	Convert frequency-domain CSI data to a time-domain power delay profile (PDP) using MUSIC super-resolution.
 
@@ -182,6 +183,7 @@ def fdomain_to_tdomain_pdp_music(csi_fdomain, source_count = None, chunksize = 5
 	R = 1 / csi_chunked.shape[0] * np.einsum("dbrmci,dbrmcj->brmij", csi_chunked, np.conj(csi_chunked))
 
 	delays_taps = np.linspace(tap_min, tap_max, resolution)
+	# TODO: get rid of magic constant 128
 	steering_vectors = np.exp(-1.0j * 2 * np.pi * np.outer(np.arange(R.shape[-1]), delays_taps / 128))
 
 	# Use forward–backward correlation matrix (FBCM)
@@ -216,3 +218,71 @@ def fdomain_to_tdomain_pdp_music(csi_fdomain, source_count = None, chunksize = 5
 				P_music[array,row,col] = 1 / np.linalg.norm(np.einsum("cn,cr->nr", np.conj(Qn), steering_vectors), axis = 0)
 
 	return delays_taps, P_music
+
+def estimate_toas_rootmusic(csi_fdomain, max_source_count = 2, chunksize = 36):
+	"""
+	Estimate the time of arrivals (ToAs) of the LoS paths using the root-MUSIC algorithm.
+
+	:param csi_fdomain: The frequency-domain CSI data. Complex-valued NumPy array with shape (datapoints, arrays, rows, columns, subcarriers).
+	:param max_source_count: The maximum number of sources to estimate. The number of sources is determined using the Rissanen MDL criterion, but this parameter can be used to limit the number of sources.
+	:param chunksize: The size of the chunks to use for the covariance matrix computation.
+	:return: The estimated ToAs of the LoS paths, in seconds, NumPy array of shape :code:`(boardcount, constants.ROWS_PER_BOARD, constants.ANTENNAS_PER_ROW)`.
+	"""
+	# Compute the covariance matrix R
+	chunksize = csi_fdomain.shape[-1] if chunksize is None else chunksize
+	chunkcount = csi_fdomain.shape[-1] // chunksize
+	padding = (csi_fdomain.shape[-1] - chunkcount * chunksize) // 2
+
+	csi_chunked = np.reshape(csi_fdomain[..., padding:padding + chunkcount * chunksize], csi_fdomain.shape[:-1] + (chunkcount, chunksize), order = "C")
+	R = 1 / csi_chunked.shape[0] * np.einsum("dbrmci,dbrmcj->brmij", csi_chunked, np.conj(csi_chunked))
+
+	# Use forward–backward correlation matrix (FBCM)
+	R = (R + np.flip(np.conj(R), axis = (3, 4))) / 2
+
+	if chunksize > 50:
+		eigval, eigvec = np.linalg.eig(R)
+	else:
+		eigval, eigvec = np.linalg.eigh(R)
+
+	toas_by_antenna = np.zeros(R.shape[:3])
+	for array in range(R.shape[0]):
+		for row in range(R.shape[1]):
+			for col in range(R.shape[2]):
+				# Rissanen MDL for FBCM, as described in
+				# Xinrong Li and Kaveh Pahlavan: "Super-resolution TOA estimation with diversity for indoor geolocation" in IEEE Transactions on Wireless Communications
+				ev = np.sort(np.real(eigval[array,row,col,:]))[::-1]
+
+				# M = number of chunks for autocorrelation matrix computation, L = maximum number of sources
+				M = chunkcount * csi_fdomain.shape[0]
+				L = 10
+				mdl = np.zeros(L)
+
+				for k in range(L):
+					mdl[k] = -M * (L - k) * (np.sum(np.log(ev[k:L] + 1e-6) / (L - k)) - np.log(np.sum(ev[k:L] + 1e-6) / (L - k)))
+					mdl[k] = mdl[k] + (1/4) * k * (2 * L - k + 1) * np.log(M)
+
+				antenna_source_count = min(np.argmin(mdl), max_source_count)
+
+				# Now that we determined the number of sources via Rissanen MDL criterion,
+				# we can use the root-MUSIC algorithm to estimate the ToAs
+				order = np.argsort(np.real(eigval[array,row,col]))[::-1]
+				Qn = np.asmatrix(eigvec[array,row,col,:,:][:,order][:,antenna_source_count:])
+				C = np.matmul(Qn, Qn.H)
+
+				coeffs = np.asarray([np.trace(C, offset = diag) for diag in range(1, len(C))])
+
+				# Remove some of the smaller noise coefficients, trade accuracy for speed
+				coeffs = np.hstack((coeffs[::-1], np.trace(C), coeffs.conj()))
+
+				roots = np.roots(coeffs)
+				roots = roots[abs(roots) < 1]
+				powers = 1 / (1 - np.abs(roots))
+				largest_roots = np.argsort(powers)[::-1]
+
+				source_delays = -np.angle(roots[largest_roots[:antenna_source_count]]) / (2 * np.pi) / constants.WIFI_SUBCARRIER_SPACING
+			
+				# Out of the strongest 2 paths (or only strongest, if only one source exists), pick the earliest one
+				if len(source_delays) > 0:
+					toas_by_antenna[array,row,col] = np.min(source_delays[:min(antenna_source_count, 2)])
+
+	return toas_by_antenna

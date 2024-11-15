@@ -78,7 +78,6 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		csi_interp_ht40 = espargos.util.csi_interp_iterative(csi_ht40_shifted, iterations = 5)
 		csi_flat = np.reshape(csi_interp_ht40, (-1, csi_interp_ht40.shape[-1]))
 
-		# TODO: special case for mvdr
 		if self.args.mvdr or self.args.music:
 			if self.args.music:
 				superres_delays, superres_pdps = espargos.util.fdomain_to_tdomain_pdp_music(csi_backlog_ht40)

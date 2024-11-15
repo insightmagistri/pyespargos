@@ -27,7 +27,8 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 		parser = argparse.ArgumentParser(description = "ESPARGOS Demo: Show time difference of arrival over time (single board)")
 		parser.add_argument("hosts", type = str, help = "Comma-separated list of host addresses (IP or hostname) of ESPARGOS controllers")
 		parser.add_argument("-b", "--backlog", type = int, default = 20, help = "Number of CSI datapoints to average over in backlog")
-		parser.add_argument("-m", "--maxage", type = float, default = 10, help = "Maximum age of CSI datapoints before they are cleared")
+		parser.add_argument("-m", "--music", default = False, help = "Use root-MUSIC algorithm to compute more precise ToAs of LoS paths", action = "store_true")
+		parser.add_argument("-a", "--maxage", type = float, default = 10, help = "Maximum age of CSI datapoints before they are cleared")
 		self.args = parser.parse_args()
 
 		# Set up ESPARGOS pool and backlog
@@ -36,7 +37,6 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 		self.pool.start()
 		self.pool.calibrate(duration = 4, per_board=False)
 		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog)
-		self.backlog.add_update_callback(self.update)
 		self.backlog.start()
 
 		# Qt setup
@@ -56,22 +56,26 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 
 		return super().exec()
 
+	@PyQt6.QtCore.pyqtSlot()
 	def update(self):
 		if self.backlog.nonempty():
 			#timestamps = self.backlog.get_timestamps()
-			#tdoas = np.mean(timestamps - np.mean(timestamps, axis = (1, 2, 3))[:,np.newaxis,np.newaxis,np.newaxis], axis = 0) * 1e9
+			#tdoas_ns = np.mean(timestamps - np.mean(timestamps, axis = (1, 2, 3))[:,np.newaxis,np.newaxis,np.newaxis], axis = 0) * 1e9
 
 			csi_backlog_ht40 = self.backlog.get_ht40()
+			espargos.util.interpolate_ht40_gap(csi_backlog_ht40)
 
 			# Do interpolation "by_array" due to Doppler (destroys TDoA for moving targets otherwise)
 			csi_interp_ht40 = espargos.util.csi_interp_iterative_by_array(csi_backlog_ht40, iterations = 5)
 
-			# TODO: Could even apply something like MUSIC/MVDR here for even higher precision
-			tdoas = np.angle(np.sum(csi_interp_ht40[...,1:] * np.conj(csi_interp_ht40[...,:-1]), axis = -1)) / (2 * np.pi) / espargos.constants.WIFI_SUBCARRIER_SPACING * 1e9
+			if self.args.music:
+				tdoas_ns = espargos.util.estimate_toas_rootmusic(csi_backlog_ht40) * 1e9
+			else:
+				tdoas_ns = np.angle(np.sum(csi_interp_ht40[...,1:] * np.conj(csi_interp_ht40[...,:-1]), axis = -1)) / (2 * np.pi) / espargos.constants.WIFI_SUBCARRIER_SPACING * 1e9
 
 			mean_rx_timestamp = self.backlog.get_latest_timestamp() - self.startTimestamp
 
-			self.updateTDOAs.emit(mean_rx_timestamp, tdoas.astype(float).flatten().tolist())
+			self.updateTDOAs.emit(mean_rx_timestamp, tdoas_ns.astype(float).flatten().tolist())
 
 	def onAboutToQuit(self):
 		self.pool.stop()

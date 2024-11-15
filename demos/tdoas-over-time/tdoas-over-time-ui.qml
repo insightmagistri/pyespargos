@@ -127,6 +127,15 @@ ApplicationWindow {
 					}
 				}
 
+				Timer {
+					interval: 1 / 30 * 1000
+					running: true
+					repeat: true
+					onTriggered: {
+						backend.update()
+					}
+				}
+
 				Connections {
 					target: backend
 
