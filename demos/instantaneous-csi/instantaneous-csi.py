@@ -22,9 +22,12 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		parser = argparse.ArgumentParser(description = "ESPARGOS Demo: Show instantaneous CSI over subcarrier index (single board)")
 		parser.add_argument("hosts", type = str, help = "Comma-separated list of host addresses (IP or hostname) of ESPARGOS controllers")
 		parser.add_argument("-b", "--backlog", type = int, default = 20, help = "Number of CSI datapoints to average over in backlog")
-		parser.add_argument("-t", "--timedomain", default = False, help = "Display CSI in time-domain", action = "store_true")
 		parser.add_argument("-s", "--shift-peak", default = False, help = "Time-shift CSI so that first peaks align", action = "store_true")
 		parser.add_argument("-o", "--oversampling", type = int, default = 4, help = "Oversampling factor for time-domain CSI")
+		display_group = parser.add_mutually_exclusive_group()
+		display_group.add_argument("-t", "--timedomain", default = False, help = "Display CSI in time-domain", action = "store_true")
+		display_group.add_argument("-m", "--music", default = False, help = "Display PDP computed via MUSIC algorithm", action = "store_true")
+		display_group.add_argument("-v", "--mvdr", default = False, help = "Display PDP computed via MVDR algorithm", action = "store_true")
 		self.args = parser.parse_args()
 
 		# Set up ESPARGOS pool and backlog
@@ -65,16 +68,32 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 	@PyQt6.QtCore.pyqtSlot(list, list, PyQt6.QtCharts.QValueAxis)
 	def updateCSI(self, powerSeries, phaseSeries, axis):
 		csi_backlog_ht40 = self.backlog.get_ht40()
+
+		# Fill "gap" in subcarriers with interpolated data
+		espargos.util.interpolate_ht40_gap(csi_backlog_ht40)
+
 		csi_ht40_shifted = espargos.util.shift_to_firstpeak(csi_backlog_ht40) if self.args.shift_peak else csi_backlog_ht40
 
 		# TODO: If using per-board calibration, interpolation should also be per-board
 		csi_interp_ht40 = espargos.util.csi_interp_iterative(csi_ht40_shifted, iterations = 5)
 		csi_flat = np.reshape(csi_interp_ht40, (-1, csi_interp_ht40.shape[-1]))
 
-		# Fill "gap" in subcarriers with interpolated data
-		espargos.util.interpolate_ht40_gap(csi_flat)
+		# TODO: special case for mvdr
+		if self.args.mvdr or self.args.music:
+			if self.args.music:
+				superres_delays, superres_pdps = espargos.util.fdomain_to_tdomain_pdp_music(csi_backlog_ht40)
+			else:
+				superres_delays, superres_pdps = espargos.util.fdomain_to_tdomain_pdp_mvdr(csi_backlog_ht40)
 
-		if self.args.timedomain:
+			superres_pdps_flat = np.reshape(superres_pdps, (-1, superres_pdps.shape[-1]))
+
+			superres_pdps_flat = superres_pdps_flat / np.max(superres_pdps_flat)
+			axis.setMin(0)
+			axis.setMax(1.1)
+
+			for pwr_series, mvdr_pdp in zip(powerSeries, superres_pdps_flat):
+				pwr_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(superres_delays, mvdr_pdp)])
+		elif self.args.timedomain:
 			zero_padding = np.zeros((csi_flat.shape[0], csi_flat.shape[1] * (self.args.oversampling - 1)), dtype = np.complex64)
 			csi_flat = np.concatenate((csi_flat, zero_padding), axis = 1)
 			csi_flat = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(csi_flat, axes = -1), axis = -1), axes = -1)
@@ -105,6 +124,11 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 	@PyQt6.QtCore.pyqtProperty(bool, constant=True)
 	def timeDomain(self):
 		return self.args.timedomain
+
+	@PyQt6.QtCore.pyqtProperty(bool, constant=True)
+	def superResolution(self):
+		return self.args.mvdr or self.args.music
+
 
 app = EspargosDemoInstantaneousCSI(sys.argv)
 sys.exit(app.exec())

@@ -63,7 +63,6 @@ def csi_interp_eigenvec(csi, weights=None):
 
 	return np.reshape(v[:, principal], csi_shape)
 
-
 def get_frequencies_ht40(primary_channel, secondary_channel):
 	"""
 	Returns the frequencies of the subcarriers in an HT40 2.4GHz WiFi channel.
@@ -135,3 +134,85 @@ def shift_to_firstpeak(csi_datapoints, max_delay_taps = 3, search_resolution = 4
 	shift_to_firstpeak = shift_vectors[first_peak]
 
 	return shift_to_firstpeak * csi_datapoints
+
+def fdomain_to_tdomain_pdp_mvdr(csi_fdomain, chunksize = 50, tap_min = -7, tap_max = 7, resolution = 200):
+	"""
+	Convert frequency-domain CSI data to a time-domain power delay profile (PDP) using the MVDR beamformer.
+
+	:param: csi_fdomain: The frequency-domain CSI data. Complex-valued NumPy array with shape (datapoints, arrays, rows, columns, subcarriers).
+	:return: The delays (in taps) and the PDPs of shape (datapoints, arrays, rows, columns, delays), as NumPy arrays.
+	"""
+	# Compute the covariance matrix R
+	chunksize = csi_fdomain.shape[-1] if chunksize is None else chunksize
+	chunkcount = csi_fdomain.shape[-1] // chunksize
+	padding = (csi_fdomain.shape[-1] - chunkcount * chunksize) // 2
+
+	csi_chunked = np.reshape(csi_fdomain[..., padding:padding + chunkcount * chunksize], csi_fdomain.shape[:-1] + (chunkcount, chunksize), order = "C")
+	R = 1 / csi_chunked.shape[0] * np.einsum("dbrmci,dbrmcj->brmij", csi_chunked, np.conj(csi_chunked))
+
+	delays_taps = np.linspace(tap_min, tap_max, resolution)
+	steering_vectors = np.exp(-1.0j * 2 * np.pi * np.outer(np.arange(R.shape[-1]), delays_taps / 128))
+
+	R = (R + np.flip(np.conj(R), axis = (3, 4))) / 2
+	R = R + 0.1 * np.eye(R.shape[-1])[np.newaxis,np.newaxis,np.newaxis,:,:]
+
+	# Computation using matrix inverse
+	#R_inv = np.linalg.inv(R)
+	#P_mvdr = 1 / np.real(np.einsum("it,brmij,jt->brmt", np.conj(steering_vectors), R_inv, steering_vectors))
+
+	# Computation using matrix solve
+	R_inv_steering_vectors = np.linalg.solve(R, steering_vectors)
+	P_mvdr = 1 / np.real(np.einsum("it,brmit->brmt", np.conj(steering_vectors), R_inv_steering_vectors))
+
+	return delays_taps, P_mvdr
+
+def fdomain_to_tdomain_pdp_music(csi_fdomain, source_count = None, chunksize = 50, tap_min = -7, tap_max = 7, resolution = 200):
+	"""
+	Convert frequency-domain CSI data to a time-domain power delay profile (PDP) using MUSIC super-resolution.
+
+	:param: csi_fdomain: The frequency-domain CSI data. Complex-valued NumPy array with shape (datapoints, arrays, rows, columns, subcarriers).
+	:return: The delays (in taps) and the PDPs of shape (datapoints, arrays, rows, columns, delays), as NumPy arrays.
+	"""
+	# Compute the covariance matrix R
+	chunksize = csi_fdomain.shape[-1] if chunksize is None else chunksize
+	chunkcount = csi_fdomain.shape[-1] // chunksize
+	padding = (csi_fdomain.shape[-1] - chunkcount * chunksize) // 2
+
+	csi_chunked = np.reshape(csi_fdomain[..., padding:padding + chunkcount * chunksize], csi_fdomain.shape[:-1] + (chunkcount, chunksize), order = "C")
+	R = 1 / csi_chunked.shape[0] * np.einsum("dbrmci,dbrmcj->brmij", csi_chunked, np.conj(csi_chunked))
+
+	delays_taps = np.linspace(tap_min, tap_max, resolution)
+	steering_vectors = np.exp(-1.0j * 2 * np.pi * np.outer(np.arange(R.shape[-1]), delays_taps / 128))
+
+	# Use forward–backward correlation matrix (FBCM)
+	R = (R + np.flip(np.conj(R), axis = (3, 4))) / 2
+
+	eigval, eigvec = np.linalg.eigh(R)
+	eigval = eigval[:,:,:,::-1]
+	eigvec = eigvec[:,:,:,:,::-1]
+
+	P_music = np.zeros(R.shape[:3] + (resolution,))
+	for array in range(R.shape[0]):
+		for row in range(R.shape[1]):
+			for col in range(R.shape[2]):
+				antenna_source_count = source_count
+				if antenna_source_count is None:
+					# Rissanen MDL for FBCM, as described in
+					# Xinrong Li and Kaveh Pahlavan: "Super-resolution TOA estimation with diversity for indoor geolocation" in IEEE Transactions on Wireless Communications
+					ev = np.real(eigval)[array,row,col,:]
+
+					# M = number of chunks for autocorrelation matrix computation, L = maximum number of sources
+					M = chunkcount
+					L = 10
+					mdl = np.zeros(L)
+
+					for k in range(L):
+						mdl[k] = -M * (L - k) * (np.sum(np.log(ev[k:L] + 1e-6) / (L - k)) - np.log(np.sum(ev[k:L] + 1e-6) / (L - k)))
+						mdl[k] = mdl[k] + (1/4) * k * (2 * L - k + 1) * np.log(M)
+
+					antenna_source_count = np.argmin(mdl)
+
+				Qn = eigvec[array,row,col,:,antenna_source_count:]
+				P_music[array,row,col] = 1 / np.linalg.norm(np.einsum("cn,cr->nr", np.conj(Qn), steering_vectors), axis = 0)
+
+	return delays_taps, P_music

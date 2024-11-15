@@ -22,7 +22,7 @@ ApplicationWindow {
 		Text {
 			Layout.alignment: Qt.AlignCenter
 			font.pixelSize: Math.max(24, window.width / 70)
-			text: "Instantaneous CSI: " + (backend.timeDomain ? "Time Domain" : "Frequency Domain")
+			text: "Instantaneous CSI: " + (backend.timeDomain ? "Time Domain" : (backend.superResolution ? "Superresolution Time Domain" : "Frequency Domain"))
 			color: "#ffffff"
 			Layout.margins: 10
 		}
@@ -42,12 +42,12 @@ ApplicationWindow {
 				ValueAxis {
 					id: csiAmplitudeSubcarrierAxis
 
-					min: backend.timeDomain ? -20 : backend.subcarrierRange[0]
-					max: backend.timeDomain ? 20 : backend.subcarrierRange.slice(-1)
-					titleText: backend.timeDomain ? "<font color=\"#e0e0e0\">Delay [tap]</font>" : "<font color=\"#e0e0e0\">Subcarrier Index</font>"
+					min: (backend.timeDomain || backend.superResolution) ? -7 : backend.subcarrierRange[0]
+					max: (backend.timeDomain || backend.superResolution) ? 7 : backend.subcarrierRange.slice(-1)
+					titleText: (backend.timeDomain || backend.superResolution) ? "<font color=\"#e0e0e0\">Delay [tap]</font>" : "<font color=\"#e0e0e0\">Subcarrier Index</font>"
 					titleFont.bold: false
 					gridLineColor: "#c0c0c0"
-					tickInterval: 30
+					tickInterval: (backend.timeDomain || backend.superResolution) ? 5 : 30
 					tickType: ValueAxis.TicksDynamic
 					labelsColor: "#e0e0e0"
 				},
@@ -56,10 +56,10 @@ ApplicationWindow {
 
 					min: 0
 					max: 1
-					titleText: backend.timeDomain ? "<font color=\"#e0e0e0\">Power [linear]</font>" : "<font color=\"#e0e0e0\">Power [dB]</font>"
+					titleText: (backend.timeDomain || backend.superResolution) ? "<font color=\"#e0e0e0\">Power [linear]</font>" : "<font color=\"#e0e0e0\">Power [dB]</font>"
 					titleFont.bold: false
 					gridLineColor: "#c0c0c0"
-					tickInterval: backend.timeDomain ? 2000 : 5
+					tickInterval: backend.timeDomain ? 2000 : (backend.superResolution ? 0.5 : 5)
 					tickType: ValueAxis.TicksDynamic
 					labelsColor: "#e0e0e0"
 				}
@@ -89,17 +89,18 @@ ApplicationWindow {
 			antialiasing: true
 			backgroundColor: "#202020"
 			dropShadowEnabled: true
+			visible: !backend.superResolution
 
 			axes: [
 				ValueAxis {
 					id: csiPhaseSubcarrierAxis
 
-					min: backend.timeDomain ? -20 : backend.subcarrierRange[0]
-					max: backend.timeDomain ? 20 : backend.subcarrierRange.slice(-1)
-					titleText: backend.timeDomain ? "<font color=\"#e0e0e0\">Delay [tap]</font>" : "<font color=\"#e0e0e0\">Subcarrier Index</font>"
+					min: (backend.timeDomain || backend.superResolution) ? -7 : backend.subcarrierRange[0]
+					max: (backend.timeDomain || backend.superResolution) ? 7 : backend.subcarrierRange.slice(-1)
+					titleText: (backend.timeDomain || backend.superResolution) ? "<font color=\"#e0e0e0\">Delay [tap]</font>" : "<font color=\"#e0e0e0\">Subcarrier Index</font>"
 					titleFont.bold: false
 					gridLineColor: "#c0c0c0"
-					tickInterval: 30
+					tickInterval: (backend.timeDomain || backend.superResolution) ? 5 : 30
 					tickType: ValueAxis.TicksDynamic
 					labelsColor: "#e0e0e0"
 				},
@@ -133,7 +134,7 @@ ApplicationWindow {
 	}
 
 	Timer {
-		interval: 1 / 60 * 1000
+		interval: (backend.superResolution ? 1 / 30 : 1 / 60) * 1000
 		running: true
 		repeat: true
 		onTriggered: {
