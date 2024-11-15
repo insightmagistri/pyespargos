@@ -24,6 +24,7 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-b", "--backlog", type = int, default = 20, help = "Number of CSI datapoints to average over in backlog")
 		parser.add_argument("-t", "--timedomain", default = False, help = "Display CSI in time-domain", action = "store_true")
 		parser.add_argument("-s", "--shift-peak", default = False, help = "Time-shift CSI so that first peaks align", action = "store_true")
+		parser.add_argument("-o", "--oversampling", type = int, default = 4, help = "Oversampling factor for time-domain CSI")
 		self.args = parser.parse_args()
 
 		# Set up ESPARGOS pool and backlog
@@ -74,22 +75,27 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		espargos.util.interpolate_ht40_gap(csi_flat)
 
 		if self.args.timedomain:
+			zero_padding = np.zeros((csi_flat.shape[0], csi_flat.shape[1] * (self.args.oversampling - 1)), dtype = np.complex64)
+			csi_flat = np.concatenate((csi_flat, zero_padding), axis = 1)
 			csi_flat = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(csi_flat, axes = -1), axis = -1), axes = -1)
+			subcarrier_range_zeropadded = np.arange(-csi_flat.shape[-1] // 2, csi_flat.shape[-1] // 2) / self.args.oversampling
 			csi_power = np.abs(csi_flat)
 			axis.setMin(0)
-			axis.setMax(csi_flat.shape[-1] / np.sqrt(2))
+			axis.setMax(csi_flat.shape[-1] / np.sqrt(2) / self.args.oversampling**2)
 			csi_phase = np.angle(csi_flat * np.exp(-1.0j * np.angle(csi_flat[0, len(csi_flat[0]) // 2])))
+
+			for pwr_series, phase_series, ant_pwr, ant_phase in zip(powerSeries, phaseSeries, csi_power, csi_phase):
+				pwr_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(subcarrier_range_zeropadded, ant_pwr)])
+				phase_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(subcarrier_range_zeropadded, ant_phase)])
 		else:
 			csi_power = 20 * np.log10(np.abs(csi_flat) + 0.00001)
 			axis.setMin(10)
 			axis.setMax(45)
 			csi_phase = np.angle(csi_flat * np.exp(-1.0j * np.angle(csi_flat[0, csi_flat.shape[1] // 2])))
 
-		#axis.setMax(max(np.max(csi_power), axis.max()))
-
-		for pwr_series, phase_series, ant_pwr, ant_phase in zip(powerSeries, phaseSeries, csi_power, csi_phase):
-			pwr_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(self.subcarrier_range, ant_pwr)])
-			phase_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(self.subcarrier_range, ant_phase)])
+			for pwr_series, phase_series, ant_pwr, ant_phase in zip(powerSeries, phaseSeries, csi_power, csi_phase):
+				pwr_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(self.subcarrier_range, ant_pwr)])
+				phase_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(self.subcarrier_range, ant_phase)])
 
 	def onAboutToQuit(self):
 		self.pool.stop()
