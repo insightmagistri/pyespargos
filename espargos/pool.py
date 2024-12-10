@@ -394,8 +394,8 @@ class Pool(object):
         self.ota_cache_timeout = ota_cache_timeout
 
         # We have two caches: One for calibration packets, the other one for over-the-air packets
-        self.cluster_cache_calib = OrderedDict()
-        self.cluster_cache_ota = OrderedDict()
+        self.cluster_cache_calib = OrderedDict[str, ClusteredCSI]()
+        self.cluster_cache_ota = OrderedDict[str, ClusteredCSI]()
 
         self.input_list = list()
         self.input_cond = threading.Condition()
@@ -531,6 +531,8 @@ class Pool(object):
                     timestamp_offsets.append(cluster.get_sensor_timestamps() - cluster.get_host_timestamp())
 
             self.logger.info(f"Pool: Collected {len(self.cluster_cache_calib)} calibration clusters, out of which {len(complete_clusters)} are complete")
+            if len(complete_clusters) == 0:
+                raise Exception("ESPARGOS calibration failed, did not receive phase reference signal")
             phase_calibration = util.csi_interp_iterative(np.asarray(complete_clusters))
             time_calibration = np.mean(np.asarray(timestamp_offsets), axis = 0)
 
