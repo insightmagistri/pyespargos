@@ -27,7 +27,9 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 		parser = argparse.ArgumentParser(description = "ESPARGOS Demo: Show time difference of arrival over time (single board)")
 		parser.add_argument("hosts", type = str, help = "Comma-separated list of host addresses (IP or hostname) of ESPARGOS controllers")
 		parser.add_argument("-b", "--backlog", type = int, default = 20, help = "Number of CSI datapoints to average over in backlog")
-		parser.add_argument("-m", "--music", default = False, help = "Use root-MUSIC algorithm to compute more precise ToAs of LoS paths", action = "store_true")
+		algo_group = parser.add_mutually_exclusive_group()
+		algo_group.add_argument("-m", "--music", default = False, help = "Use root-MUSIC algorithm to compute more precise ToAs of LoS paths", action = "store_true")
+		algo_group.add_argument("-u", "--unwrap", default = False, help = "Use phase unwrapping algorithm to compute more precise ToAs of LoS paths", action = "store_true")
 		parser.add_argument("-a", "--average", default = False, help = "Average TDoAs over all antennas in array", action = "store_true")
 		parser.add_argument("-c", "--maxage", type = float, default = 10, help = "Maximum age of CSI datapoints before they are cleared")
 		self.args = parser.parse_args()
@@ -71,6 +73,9 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 
 			if self.args.music:
 				tdoas_ns = espargos.util.estimate_toas_rootmusic(csi_backlog_ht40, per_board_average = self.args.average) * 1e9
+			elif self.args.unwrap:
+				phases = np.unwrap(np.angle(csi_interp_ht40), axis = -1)
+				tdoas_ns = (phases[..., -1] - phases[..., 0]) / (2 * np.pi * phases.shape[-1]) / espargos.constants.WIFI_SUBCARRIER_SPACING * 1e9
 			else:
 				sum_axis = -1 if not self.args.average else (1, 2, 3)
 				tdoas_ns = np.angle(np.sum(csi_interp_ht40[...,1:] * np.conj(csi_interp_ht40[...,:-1]), axis = sum_axis)) / (2 * np.pi) / espargos.constants.WIFI_SUBCARRIER_SPACING * 1e9
