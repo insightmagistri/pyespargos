@@ -67,12 +67,12 @@ ApplicationWindow {
 					ValueAxis {
 						id: tdoasOverTimeYAxis
 
-						min: -50
-						max: 50
+						min: -40
+						max: 40
 						titleText: "<font color=\"#e0e0e0\">Time of Arrival Difference [ns]</font>"
 						titleFont.bold: false
 						gridLineColor: "#c0c0c0"
-						tickInterval: 5
+						tickInterval: 10
 						tickType: ValueAxis.TicksDynamic
 						labelsColor: "#e0e0e0"
 					}
