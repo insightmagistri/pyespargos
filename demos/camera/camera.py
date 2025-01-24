@@ -33,6 +33,9 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-c", "--camera-index", type = int, help = "Index of the camera, if multiple cameras are available")
 		parser.add_argument("-d", "--colorize-delay", default = False, help = "Visualize delay of beamspace components using colors", action = "store_true")
 		parser.add_argument("-i", "--no-interpolation", default = False, help = "Do not use datapoint interpolation to reduce computational complexity (can slightly improve appearance)", action = "store_true")
+		parser.add_argument("-ra", "--resolution-azimuth", type = int, default = 32, help = "Beamspace resolution for azimuth angle")
+		parser.add_argument("-re", "--resolution-elevation", type = int, default = 32, help = "Beamspace resolution for elevation angle")
+		parser.add_argument("-md", "--max-delay", type = float, default = 0.2, help = "Maximum delay in samples for colorizing delay")
 		display_group = parser.add_mutually_exclusive_group()
 		display_group.add_argument("-f", "--beamspace-fft", default = False, help = "Approximate beamspace transform via FFT (faster, but inaccurate)", action = "store_true")
 		display_group.add_argument("-m", "--music", default = False, help = "Display spatial spectrum computed via MUSIC algorithm", action = "store_true")
@@ -58,8 +61,8 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		self.spatial_spectra_db = dict()
 
 		# Pre-compute 2d steering vectors to avoid recomputation
-		self.scanning_angles_azi = np.linspace(np.deg2rad(-60), np.deg2rad(60), 32)
-		self.scanning_angles_ele = np.linspace(np.deg2rad(-60), np.deg2rad(60), 32)
+		self.scanning_angles_azi = np.linspace(np.deg2rad(-60), np.deg2rad(60), self.args.resolution_azimuth)
+		self.scanning_angles_ele = np.linspace(np.deg2rad(-60), np.deg2rad(60), self.args.resolution_elevation)
 		self.k_c = -np.pi * np.cos(self.scanning_angles_ele)[np.newaxis,:] * np.sin(self.scanning_angles_azi)[:,np.newaxis]
 		self.k_r = -np.pi * np.sin(self.scanning_angles_ele)
 
@@ -116,12 +119,12 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 				# This is technically not the correct way to go from antenna domain to beamspace,
 				# but it is approximately correct if azimuth *or* elevation angles are small
 				# csi_zeropadded has shape (datapoints, azimuth / row, elevation / column, subcarriers)
-				csi_zeropadded = np.zeros((csi_backlog_ht40.shape[0], 32, 32, csi_backlog_ht40.shape[-1]), dtype = csi_backlog_ht40.dtype)
+				csi_zeropadded = np.zeros((csi_backlog_ht40.shape[0], self.args.resolution_azimuth, self.args.resolution_elevation, csi_backlog_ht40.shape[-1]), dtype = csi_backlog_ht40.dtype)
 				real_rows_half = csi_backlog_ht40.shape[2] // 2
 				real_cols_half = csi_backlog_ht40.shape[3] // 2
-				zeropadded_rows_half = csi_zeropadded.shape[1] // 2
-				zeropadded_cols_half = csi_zeropadded.shape[2] // 2
-				csi_zeropadded[:,zeropadded_rows_half-real_rows_half:zeropadded_rows_half+real_rows_half,zeropadded_cols_half-real_cols_half:zeropadded_cols_half+real_cols_half,:] = csi_backlog_ht40[:,0,:,:,:]
+				zeropadded_rows_half = csi_zeropadded.shape[2] // 2
+				zeropadded_cols_half = csi_zeropadded.shape[1] // 2
+				csi_zeropadded[:,zeropadded_cols_half-real_cols_half:zeropadded_cols_half+real_cols_half,zeropadded_rows_half-real_rows_half:zeropadded_rows_half+real_rows_half,:] = np.swapaxes(csi_backlog_ht40[:,0,:,:,:], 1, 2)
 				csi_zeropadded = np.fft.ifftshift(csi_zeropadded, axes = (1, 2))
 				beam_frequency_space = np.fft.fft2(csi_zeropadded, axes = (1, 2))
 				beam_frequency_space = np.fft.fftshift(beam_frequency_space, axes = (1, 2))
@@ -133,7 +136,6 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 				# we can use 2D FFT to get to beamspace, which of course is technically not correct
 				# (cannot separate 2D steering vector into Kronecker product of azimuth / elevation steering vectors)
 				beam_frequency_space = np.einsum("rcae,dbrcs->daes", self.steering_vectors_2d, csi_backlog_ht40, optimize = True)
-				beam_frequency_space = np.swapaxes(beam_frequency_space, 1, 2)
 
 			squared_power_by_beam = np.sum(np.abs(beam_frequency_space)**2, axis=(0, 3))**2
 			color_value = (squared_power_by_beam - np.min(squared_power_by_beam)) / (np.max(squared_power_by_beam) - np.min(squared_power_by_beam) + 1e-6)
@@ -143,18 +145,18 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 				mean_delay_by_beam = np.angle(np.sum(beam_frequency_space[...,1:] * np.conj(beam_frequency_space[...,:-1]), axis=(0, 3)))
 
 				hsv = np.zeros((beam_frequency_space.shape[1], beam_frequency_space.shape[2], 3))
-				hsv[:,:,0] = np.clip((mean_delay_by_beam - (-0.1)) / (0.3), 0, 1)
+				hsv[:,:,0] = np.clip((mean_delay_by_beam - (-0.1)) / self.args.max_delay, 0, 1)
 				hsv[:,:,1] = 0.8
 				hsv[:,:,2] = color_value
 
 				wifi_image_rgb = matplotlib.colors.hsv_to_rgb(hsv)
 				alpha_channel = np.ones((*wifi_image_rgb.shape[:2], 1))
 				wifi_image_rgba = np.clip(np.concatenate((wifi_image_rgb, alpha_channel), axis=-1), 0, 1)
-				self.beamspace_power_imagedata = np.asarray(wifi_image_rgba.flatten() * 255, dtype = np.uint8)
+				self.beamspace_power_imagedata = np.asarray(np.swapaxes(wifi_image_rgba, 0, 1).flatten() * 255, dtype = np.uint8)
 			else:
 				self.beamspace_power = np.sum(np.abs(beam_frequency_space)**2, axis = (0, 3))
 				self.beamspace_power_imagedata = np.zeros(4 * self.beamspace_power.size, dtype = np.uint8)
-				self.beamspace_power_imagedata[1::4] = np.clip(color_value.flatten(), 0, 1) * 255
+				self.beamspace_power_imagedata[1::4] = np.clip(np.swapaxes(color_value, 0, 1).flatten(), 0, 1) * 255
 				self.beamspace_power_imagedata[3::4] = 255
 
 			self.beamspacePowerImagedataChanged.emit(self.beamspace_power_imagedata.tolist())
@@ -200,6 +202,15 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	@PyQt6.QtCore.pyqtProperty(bool, constant=True)
 	def music(self):
 		return self.args.music
+
+
+	@PyQt6.QtCore.pyqtProperty(int, constant=True)
+	def resolutionAzimuth(self):
+		return self.args.resolution_azimuth
+
+	@PyQt6.QtCore.pyqtProperty(int, constant=True)
+	def resolutionElevation(self):
+		return self.args.resolution_elevation
 
 app = EspargosDemoCamera(sys.argv)
 sys.exit(app.exec())

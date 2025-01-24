@@ -23,8 +23,8 @@ Item {
 		// It is unused if MUSIC mode is enabled.
 		property Canvas spatialSpectrumCanvas: Canvas {
 			id: spatialSpectrumCanvas
-			width: 32 // TODO
-			height: 32 // TODO
+			width: backend.resolutionAzimuth
+			height: backend.resolutionElevation
 
 			property var imageData: undefined
 			function createImageData() {
