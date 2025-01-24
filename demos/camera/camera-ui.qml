@@ -14,6 +14,38 @@ ApplicationWindow {
 	color: "#333333"
 	title: "ESPARGOS Camera Overlay Demo"
 
+    // Full screen management
+	visibility: ApplicationWindow.Windowed
+	Shortcut {
+		sequence: "F11"
+		onActivated: {
+			if (window.visibility == ApplicationWindow.Windowed) {
+				window.visibility = ApplicationWindow.FullScreen
+				footer.visible = false
+			} else {
+				window.visibility = ApplicationWindow.Windowed
+				footer.visible = true
+			}
+		}
+	}
+
+	Shortcut {
+		sequence: "Esc"
+		onActivated: window.close()
+	}
+
+	RowLayout {
+		anchors.fill: parent
+		height: parent.height
+		width: parent.width
+
+		CameraOverlay {
+			Layout.alignment: Qt.AlignCenter
+			Layout.fillWidth: true
+			Layout.fillHeight: true
+		}
+	}
+
 	footer: Pane {
 		RowLayout {
 			visible: WebCam.hasVideoInput
@@ -27,41 +59,6 @@ ApplicationWindow {
 				text: WebCam.resolution.width + 'x' + WebCam.resolution.height
 				Layout.alignment: Qt.AlignRight
 			}
-		}
-	}
-
-    // Full screen management
-	visibility: ApplicationWindow.FullScreen
-	Shortcut {
-		sequence: "F11"
-		onActivated: {
-			if (window.visibility == ApplicationWindow.Windowed)
-				window.visibility = ApplicationWindow.FullScreen
-			else
-				window.visibility = ApplicationWindow.Windowed
-		}
-	}
-
-	Shortcut {
-		sequence: "Esc"
-		onActivated: window.close()
-	}
-
-	ColumnLayout {
-		height: parent.height
-		width: parent.width
-
-		Text {
-			Layout.alignment: Qt.AlignCenter
-			font.pixelSize: Math.max(24, window.width / 70)
-			text: "MUSIC Azimuth Spatial Spectrum"
-			color: "#ffffff"
-			Layout.margins: 10
-		}
-
-		CameraOverlay {
-			Layout.fillWidth: true
-			Layout.fillHeight: true
 		}
 	}
 }

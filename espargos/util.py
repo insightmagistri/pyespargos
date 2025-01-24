@@ -114,6 +114,7 @@ def interpolate_ht40_gap(csi_ht40: np.ndarray):
 def shift_to_firstpeak(csi_datapoints: np.ndarray, max_delay_taps = 3, search_resolution = 40, peak_threshold = 0.4):
 	"""
 	Shifts the CSI data so that the first peak of the channel impulse response is at time 0.
+	Each CSI datapoint is shifted by a different amount, i.e., can be used to synchronize CSI based on LoS channel.
 	Uses a simple but rather computation-efficient algorithm to find the first peak of the channel impulse response (as opposed to superresolution-based approach).
 
 	:param csi_datapoints: The CSI data to shift, frequency-domain. Complex-valued NumPy array with shape (datapoints, arrays, rows, columns, subcarriers).
@@ -134,6 +135,30 @@ def shift_to_firstpeak(csi_datapoints: np.ndarray, max_delay_taps = 3, search_re
 	shift_to_firstpeak = shift_vectors[first_peak]
 
 	return shift_to_firstpeak * csi_datapoints
+
+def shift_to_firstpeak_sync(csi_datapoints: np.ndarray, max_delay_taps = 3, search_resolution = 40, peak_threshold = 0.4):
+	"""
+	Shifts the CSI data so that the first peak of the channel impulse response is at time 0.
+	All CSI datapoints are shifted by the same amount, i.e., requires synchronized CSI.
+
+	:param csi_datapoints: The CSI data to shift, frequency-domain. Complex-valued NumPy array with shape (datapoints, arrays, rows, columns, subcarriers).
+	:param max_delay_taps: The maximum number of time taps to shift the CSI data by.
+	:param search_resolution: The number of search points (granularity) to use for the time shift.
+	:param peak_threshold: The threshold for the peak detection, as a fraction of the maximum peak power.
+
+	:return: The frequency-domain CSI data with the first peak of the channel impulse response at time 0.
+	"""
+	# Time-shift all collected CSI so that first "peak" is at time 0
+	# CSI datapoints has shape (datapoints, arrays, rows, columns, subcarriers)
+	shifts = np.linspace(-max_delay_taps, 0, search_resolution)
+	subcarrier_range = np.arange(-csi_datapoints.shape[-1] // 2, csi_datapoints.shape[-1] // 2) + 1
+	shift_vectors = np.exp(1.0j * np.outer(shifts, 2 * np.pi * subcarrier_range / csi_datapoints.shape[-1]))
+	powers_by_delay = np.sum(np.abs(np.einsum("lbrms,ds->lbrmd", csi_datapoints, shift_vectors))**2, axis = (1, 2, 3))
+	max_peaks = np.max(powers_by_delay, axis = -1)
+	first_peak = np.argmax(powers_by_delay > peak_threshold * max_peaks[:,np.newaxis], axis = -1)
+	shift_to_firstpeak = shift_vectors[first_peak]
+
+	return shift_to_firstpeak[:,np.newaxis,np.newaxis,np.newaxis,:] * csi_datapoints
 
 def fdomain_to_tdomain_pdp_mvdr(csi_fdomain: np.ndarray, chunksize = 36, tap_min = -7, tap_max = 7, resolution = 200):
 	"""

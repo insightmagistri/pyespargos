@@ -1,4 +1,6 @@
 #!/bin/bash
 
-/usr/lib/qt6/bin/qsb --qt6 -o spatialspectrum.qsb spatialspectrum.frag
-/usr/lib/qt6/bin/qsb --qt6 -o spatialspectrum_vert.qsb spatialspectrum.vert
+DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+/usr/lib/qt6/bin/qsb --qt6 -o $DIR/spatialspectrum.qsb $DIR/spatialspectrum.frag
+/usr/lib/qt6/bin/qsb --qt6 -o $DIR/spatialspectrum_vert.qsb $DIR/spatialspectrum.vert

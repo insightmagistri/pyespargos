@@ -19,13 +19,42 @@ Item {
 		height: videoOutput.contentRect.height
 		anchors.verticalCenter: videoOutput.verticalCenter
 
+		// This is the source for the beamspace canvas.
+		// It is unused if MUSIC mode is enabled.
+		property Canvas spatialSpectrumCanvas: Canvas {
+			id: spatialSpectrumCanvas
+			width: 32 // TODO
+			height: 32 // TODO
+
+			property var imageData: undefined
+			function createImageData() {
+				const ctx = spatialSpectrumCanvas.getContext("2d");
+				imageData = ctx.createImageData(width, height);
+			}
+
+			onAvailableChanged: if(available) createImageData();
+
+			onPaint: {
+				if(imageData) {
+					const ctx = spatialSpectrumCanvas.getContext("2d");
+					ctx.drawImage(imageData, 0, 0);
+				}
+			}
+		}
+
+		property variant spatialSpectrumCanvasSource: ShaderEffectSource {
+			sourceItem: spatialSpectrumCanvas;
+			hideSource: true
+			smooth: true
+		}
+
 		mesh: GridMesh {
-        	resolution: Qt.size(180, 90)
-    	}
+			resolution: Qt.size(180, 90)
+		}
+
 		vertexShader: "spatialspectrum_vert.qsb"
 
-		property variant source: ShaderEffectSource { sourceItem: videoOutput; sourceRect: videoOutput.contentRect; hideSource: true }
-
+		// This is the hacky way to pass the spatial spectrum to the shader if MUSIC mode is enabled.
 		property matrix4x4 horizontalSpatialSpectrum0
 		property matrix4x4 horizontalSpatialSpectrum1
 		property matrix4x4 horizontalSpatialSpectrum2
@@ -44,18 +73,35 @@ Item {
 		property matrix4x4 verticalSpatialSpectrum6
 		property matrix4x4 verticalSpatialSpectrum7
 
+		property bool musicMode: backend.music
+
 		fragmentShader: "spatialspectrum.qsb"
 
-		Timer {
-			interval: 50
-			running: true
-			repeat: true
-			onTriggered: {
-				backend.updateSpatialSpectrum()
+		// This is the source for the webcam image
+		property variant source: ShaderEffectSource {
+			sourceItem: videoOutput;
+			sourceRect: videoOutput.contentRect;
+			hideSource: true
+			smooth: false
+		}
+	}
 
-				const verticalSpectrum = backend.verticalSpectrum
-				const horizontalSpectrum = backend.horizontalSpectrum
+	Logo {
+		source: "espargos_logo.svg"
+		anchors.bottom: spatialSpectrumShader.bottom
+	}
 
+	Timer {
+		interval: 50
+		running: true
+		repeat: true
+		onTriggered: {
+			backend.updateSpatialSpectrum()
+
+			const verticalSpectrum = backend.verticalSpectrum
+			const horizontalSpectrum = backend.horizontalSpectrum
+
+			if (backend.music) {
 				spatialSpectrumShader.verticalSpatialSpectrum0 = Qt.matrix4x4(verticalSpectrum.slice(  0,  16))
 				spatialSpectrumShader.verticalSpatialSpectrum1 = Qt.matrix4x4(verticalSpectrum.slice( 16,  32))
 				spatialSpectrumShader.verticalSpatialSpectrum2 = Qt.matrix4x4(verticalSpectrum.slice( 32,  48))
@@ -77,8 +123,18 @@ Item {
 		}
 	}
 
-	Logo {
-		source: "espargos_logo.svg"
-		anchors.bottom: spatialSpectrumShader.bottom
+	Connections {
+		target: backend
+		function onBeamspacePowerImagedataChanged(beamspacePowerImagedata) {
+			//spatialSpectrumCanvas.imageData.data.set(new Uint8ClampedArray(beamspacePowerImagedata));
+			if (spatialSpectrumCanvas.imageData === undefined)
+				spatialSpectrumCanvas.createImageData();
+			let len = spatialSpectrumCanvas.imageData.data.length;
+			for (let i = 0; i < len; i++) {
+				spatialSpectrumCanvas.imageData.data[i] = beamspacePowerImagedata[i];//(beamspacePowerImagedata[i]).qclamp(0, 255);
+			}
+
+			spatialSpectrumCanvas.requestPaint();
+		}
 	}
 }

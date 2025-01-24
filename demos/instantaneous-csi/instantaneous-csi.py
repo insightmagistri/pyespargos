@@ -72,7 +72,7 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		# Fill "gap" in subcarriers with interpolated data
 		espargos.util.interpolate_ht40_gap(csi_backlog_ht40)
 
-		csi_ht40_shifted = espargos.util.shift_to_firstpeak(csi_backlog_ht40) if self.args.shift_peak else csi_backlog_ht40
+		csi_ht40_shifted = espargos.util.shift_to_firstpeak_sync(csi_backlog_ht40) if self.args.shift_peak else csi_backlog_ht40
 
 		# TODO: If using per-board calibration, interpolation should also be per-board
 		csi_interp_ht40 = espargos.util.csi_interp_iterative(csi_ht40_shifted, iterations = 5)
@@ -95,7 +95,7 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		elif self.args.timedomain:
 			zero_padding = np.zeros((csi_flat.shape[0], csi_flat.shape[1] * (self.args.oversampling - 1)), dtype = np.complex64)
 			csi_flat = np.concatenate((csi_flat, zero_padding), axis = 1)
-			csi_flat = np.fft.fftshift(np.fft.ifft(np.fft.fftshift(csi_flat, axes = -1), axis = -1), axes = -1)
+			csi_flat = np.fft.fftshift(np.fft.ifft(np.fft.ifftshift(csi_flat, axes = -1), axis = -1), axes = -1)
 			subcarrier_range_zeropadded = np.arange(-csi_flat.shape[-1] // 2, csi_flat.shape[-1] // 2) / self.args.oversampling
 			csi_power = np.abs(csi_flat)
 			axis.setMin(0)
