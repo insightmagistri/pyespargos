@@ -29,35 +29,28 @@ layout(std140, binding = 0) uniform buf {
 	mat4 horizontalSpatialSpectrum7;
 
 	bool musicMode;
+	bool fftMode;
 };
 
+// Camera properties
+const vec2 fov = vec2(78, 43);
+
 // Instensity value limits in dB
-const float minIntensity = -10;
-const float maxIntensity = 0;
+const float minMUSICIntensity = -10;
+const float maxMUSICIntensity = 0;
 
 // Map intensity values (in dB) to the range [0, 1], clip at lower bound
-float normalizeIntensity(float db) {
-	return max(0, (db - minIntensity) / (maxIntensity - minIntensity));
-}
-
-// FOV (field of view) of the camera
-// TODO: Unify MUSIC and non-MUSIC modes... All of this FOV code is not really correct yet...
-vec2 fov = musicMode ? radians(vec2(60.53481199242273, 37.46666255939329)) : radians(vec2(100.53481199242273, 37.46666255939329));
-float center_z = 0.5 / tan(fov.x / 2);
-
-// Converts a pair of azimuth and elevation angle (in radians) into cartesian coordinates of the camera projection.
-// Moves the coordinate origin from the center to the top left corner, i.e. the visible area of the result is [0, 1] x [0, 1].
-vec2 toProjectionCoordinates(vec2 angles) {
-	return center_z * tan(angles) + 0.5;
+float normalizeMUSICIntensity(float db) {
+	return max(0, (db - minMUSICIntensity) / (maxMUSICIntensity - minMUSICIntensity));
 }
 
 // Converts cartesian coordinates of the camera projection into a pair of azimuth and elevation angle (in radians).
 vec2 toAngles(vec2 projection) {
-	vec2 anglesTan = (projection - 0.5) / center_z;
+	return (projection - 0.5) * radians(fov);
+}
 
-	vec2 angles = atan(anglesTan);
-
-	return vec2(angles.x, angles.y);
+vec2 toFFTBeamspace(vec2 angles) {
+	return 0.5 * vec2(cos(angles.y) * sin(angles.x), sin(angles.y));
 }
 
 void main() {
@@ -91,17 +84,17 @@ void main() {
 		}
 
 		vec2 angles = toAngles(qt_MultiTexCoord0);
-		vec2 normalizedAngles = ((degrees(angles) + 90) / 180); // map [-90°, 90°] to [0, 1]
+		vec2 normalizedAngles = ((degrees(angles) + 90) / 180); // map [pi / 2, pi / 2] to [0, 1]
 		vec2 spectrumIdx = normalizedAngles * spectrumResolution;
 		ivec2 spectrumLeftIdx = ivec2(spectrumIdx);
 		ivec2 spectrumRightIdx = ivec2(spectrumIdx) + 1;
 		vec2 interpolation = spectrumIdx - spectrumLeftIdx;
 
-		float horizontalIntensity = normalizeIntensity(
+		float horizontalIntensity = normalizeMUSICIntensity(
 			(1 - interpolation.x) * horizontalSpatialSpectrum[spectrumLeftIdx.x]
 			+ interpolation.x * horizontalSpatialSpectrum[spectrumRightIdx.x]
 		);
-		float verticalIntensity = normalizeIntensity(
+		float verticalIntensity = normalizeMUSICIntensity(
 			(1 - interpolation.y) * verticalSpatialSpectrum[spectrumLeftIdx.y]
 			+ interpolation.y * verticalSpatialSpectrum[spectrumRightIdx.y]
 		);
@@ -112,10 +105,9 @@ void main() {
 		vColor = vec4(0.2 * intensity, intensity, 0.2 * intensity, 0.0);
 	} else {
 		vec2 angles = toAngles(qt_MultiTexCoord0);
-		vec2 normalizedAngles = ((degrees(angles) + 90) / 180); // map [-90°, 90°] to [0, 1]
-		vec2 spectrumIdx = normalizedAngles * spectrumResolution;
+		vec2 textureCoords = fftMode ? (toFFTBeamspace(angles) + 0.5) : ((degrees(angles) + 90) / 180);
 
-		vec4 spatialSpectrumPixel = texture(spatialSpectrumCanvasSource, normalizedAngles);
+		vec4 spatialSpectrumPixel = texture(spatialSpectrumCanvasSource, textureCoords);
 		vColor = spatialSpectrumPixel;
 	}
 	

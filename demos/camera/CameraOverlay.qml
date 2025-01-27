@@ -74,6 +74,7 @@ Item {
 		property matrix4x4 verticalSpatialSpectrum7
 
 		property bool musicMode: backend.music
+		property bool fftMode: backend.isFFTBeamspace
 
 		fragmentShader: "spatialspectrum.qsb"
 
