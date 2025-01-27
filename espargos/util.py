@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import numpy as np
+import yaml
+
 from . import constants
 from . import csi
 
@@ -322,3 +324,66 @@ def estimate_toas_rootmusic(csi_fdomain: np.ndarray, max_source_count = 2, chunk
 		toas_by_antenna = toas_by_antenna[:,0,0]
 
 	return toas_by_antenna
+
+def parse_combined_array_config(config_file):
+	"""
+	Parse the configuration file for demos that use combined array.
+
+	:param config_file: The path to the configuration file.
+	:return indexing_matrix: The indexing matrix to map the CSI data of the subarrays to the CSI data of the large array.
+	:return board_names_hosts: The names of the boards and their hostnames.
+	:return cable_lengths: The lengths of the cables connecting the boards.
+	:return cable_velocity_factors: The velocity factors of the cables connecting the boards.
+	:return n_rows: The number of rows in the array.
+	:return n_cols: The number of columns in the array.
+	"""
+	with open(config_file, "r") as conffile:
+		config = yaml.safe_load(conffile)
+
+	# Make sure array is square
+	n_rows = len(config["array"])
+	n_cols = len(config["array"][0])
+	for row in config["array"]:
+		assert(len(row) == n_cols)
+
+	# Build an indexing matrix. The matrix contains the indices to get from the flattened representation
+	# of the CSI of all subarrays to the CSI for the large array.
+	indexing_matrix = np.zeros((n_rows, n_cols), dtype = int)
+
+	# Collect list of boards and their hosts
+	board_names_hosts = dict()
+	for boardname in config["boards"].keys():
+		board_names_hosts[boardname] = config["boards"][boardname]["host"]
+
+	for row in range(n_rows):
+		for col in range(n_cols):
+			name, index_row, index_col = config["array"][row][col].split(".")
+			offset_board = list(board_names_hosts.keys()).index(name) * constants.ANTENNAS_PER_BOARD
+			offset_row = int(index_row) * constants.ANTENNAS_PER_ROW
+			indexing_matrix[row, col] = offset_board + offset_row + int(index_col)
+
+	# Get cable lengths and velocity factors
+	cable_lengths = np.asarray([board["cable"]["length"] for board in config["boards"].values()])
+	cable_velocity_factors = np.asarray([board["cable"]["velocity_factor"] for board in config["boards"].values()])
+
+	cable_lengths = np.asarray([board["cable"]["length"] for board in config["boards"].values()])
+	cable_velocity_factors = np.asarray([board["cable"]["velocity_factor"] for board in config["boards"].values()])
+
+	return indexing_matrix, board_names_hosts, cable_lengths, cable_velocity_factors, n_rows, n_cols
+
+def build_combined_array_csi(indexing_matrix, input_csi):
+	"""
+	Build the combined array CSI data from the CSI data of the subarrays.
+
+	:param indexing_matrix: The indexing matrix to map the CSI data of the subarrays to the CSI data of the large array.
+	:param input_csi: The CSI data of the subarrays. Complex-valued NumPy array with shape (datapoints, boards, rows, columns, subcarriers).
+
+	:return: The combined array CSI data. Complex-valued NumPy array with shape (datapoints, rows, columns, subcarriers).
+	"""
+	# input_csi has shape (datapoint, board, row, column, subcarrier)
+	csi_by_array_row_col = np.moveaxis(input_csi, 0, -1)
+	csi_ht40_by_antenna = np.reshape(csi_by_array_row_col, (csi_by_array_row_col.shape[0] * csi_by_array_row_col.shape[1] * csi_by_array_row_col.shape[2], csi_by_array_row_col.shape[3], csi_by_array_row_col.shape[4]))
+	csi_combined = csi_ht40_by_antenna[indexing_matrix]
+	csi_combined = np.moveaxis(csi_combined, -1, 0)
+
+	return csi_combined

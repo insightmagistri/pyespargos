@@ -28,23 +28,26 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 
 		# Parse command line arguments
 		parser = argparse.ArgumentParser(description = "ESPARGOS Demo: Overlay received power on top of camera image")
-		parser.add_argument("host", type = str, help = "Host address (IP or hostname) of ESPARGOS controller")
+		parser.add_argument("conf", type = str, help = "Path to config file")
 		parser.add_argument("-b", "--backlog", type = int, default = 20, help = "Number of CSI datapoints to average over in backlog")
 		parser.add_argument("-c", "--camera-index", type = int, help = "Index of the camera, if multiple cameras are available")
 		parser.add_argument("-d", "--colorize-delay", default = False, help = "Visualize delay of beamspace components using colors", action = "store_true")
 		parser.add_argument("-i", "--no-interpolation", default = False, help = "Do not use datapoint interpolation to reduce computational complexity (can slightly improve appearance)", action = "store_true")
-		parser.add_argument("-ra", "--resolution-azimuth", type = int, default = 32, help = "Beamspace resolution for azimuth angle")
-		parser.add_argument("-re", "--resolution-elevation", type = int, default = 32, help = "Beamspace resolution for elevation angle")
+		parser.add_argument("-ra", "--resolution-azimuth", type = int, default = 64, help = "Beamspace resolution for azimuth angle")
+		parser.add_argument("-re", "--resolution-elevation", type = int, default = 64, help = "Beamspace resolution for elevation angle")
 		parser.add_argument("-md", "--max-delay", type = float, default = 0.2, help = "Maximum delay in samples for colorizing delay")
 		display_group = parser.add_mutually_exclusive_group()
 		display_group.add_argument("-f", "--beamspace-fft", default = False, help = "Approximate beamspace transform via FFT (faster, but inaccurate)", action = "store_true")
 		display_group.add_argument("-m", "--music", default = False, help = "Display spatial spectrum computed via MUSIC algorithm", action = "store_true")
 		self.args = parser.parse_args()
 
+		# Load config file
+		self.indexing_matrix, board_names_hosts, cable_lengths, cable_velocity_factors, self.n_rows, self.n_cols = espargos.util.parse_combined_array_config(self.args.conf)
+
 		# Set up ESPARGOS pool and backlog
-		self.pool = espargos.Pool([espargos.Board(self.args.host)])
+		self.pool = espargos.Pool([espargos.Board(host) for host in board_names_hosts.values()])
 		self.pool.start()
-		self.pool.calibrate(duration = 2)
+		self.pool.calibrate(duration = 3, per_board = False, cable_lengths = cable_lengths, cable_velocity_factors = cable_velocity_factors)
 		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog)
 		self.backlog.start()
 
@@ -69,8 +72,8 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		# phase_c depends on both elevation and azimuth angle and has shape (columns, azimuth angle, elevation angle)
 		# phase_r only depends on elevation angle and has shape (rows, elevation angle)
 		# steering_vectors_2d has shape (rows, columns, azimuth angle, elevation angle)
-		antenna_index_c = np.arange(espargos.constants.ANTENNAS_PER_ROW)
-		antenna_index_r = np.arange(espargos.constants.ROWS_PER_BOARD)
+		antenna_index_c = np.arange(self.n_cols)
+		antenna_index_r = np.arange(self.n_rows)
 		phase_c = antenna_index_c[:,np.newaxis,np.newaxis] * self.k_c[np.newaxis,:,:]
 		phase_r = antenna_index_r[:,np.newaxis] * self.k_r[np.newaxis,:]
 
@@ -100,21 +103,25 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		# Weight CSI data with RSSI
 		csi_backlog_ht40 = csi_backlog_ht40 * 10**(rssi_backlog[..., np.newaxis] / 20)
 
+		# Build combined array CSI data and add fake array index dimension
+		csi_combined = espargos.util.build_combined_array_csi(self.indexing_matrix, csi_backlog_ht40)
+		csi_combined = csi_combined[:,np.newaxis,:,:,:]
+
 		# Get rid of gap in CSI data around DC
-		espargos.util.interpolate_ht40_gap(csi_backlog_ht40)
+		espargos.util.interpolate_ht40_gap(csi_combined)
 
 		# Shift all CSI datapoints in time so that LoS component arrives at the same time
-		csi_backlog_ht40 = espargos.util.shift_to_firstpeak_sync(csi_backlog_ht40)
+		csi_combined = espargos.util.shift_to_firstpeak_sync(csi_combined)
 
 		# For computational efficiency reasons, reduce number of datapoints to one by interpolating over all datapoints
 		if not self.args.no_interpolation:
-			csi_backlog_ht40 = np.asarray([espargos.util.csi_interp_iterative(csi_backlog_ht40, iterations = 5)])
+			csi_combined = np.asarray([espargos.util.csi_interp_iterative(csi_combined, iterations = 5)])
 
 		# Option 1: MUSIC spatial spectrum (simplest)
 		if self.args.music:
 			# Compute array covariance matrix R over all backlog datapoints, all rows and all subcarriers
-			R_h = np.einsum("dbris,dbrjs->ij", csi_backlog_ht40, np.conj(csi_backlog_ht40))
-			R_v = np.einsum("dbics,dbjcs->ij", csi_backlog_ht40, np.conj(csi_backlog_ht40))
+			R_h = np.einsum("dbris,dbrjs->ij", csi_combined, np.conj(csi_combined))
+			R_v = np.einsum("dbics,dbjcs->ij", csi_combined, np.conj(csi_combined))
 			self.spatial_spectra_db["horizontal"] = self._music_algorithm(R_h)
 			self.spatial_spectra_db["vertical"] = self._music_algorithm(R_v)
 
@@ -124,12 +131,12 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 				# This is technically not the correct way to go from antenna domain to beamspace,
 				# but it is approximately correct if azimuth *or* elevation angles are small
 				# csi_zeropadded has shape (datapoints, azimuth / row, elevation / column, subcarriers)
-				csi_zeropadded = np.zeros((csi_backlog_ht40.shape[0], self.args.resolution_azimuth, self.args.resolution_elevation, csi_backlog_ht40.shape[-1]), dtype = csi_backlog_ht40.dtype)
-				real_rows_half = csi_backlog_ht40.shape[2] // 2
-				real_cols_half = csi_backlog_ht40.shape[3] // 2
+				csi_zeropadded = np.zeros((csi_combined.shape[0], self.args.resolution_azimuth, self.args.resolution_elevation, csi_combined.shape[-1]), dtype = csi_combined.dtype)
+				real_rows_half = csi_combined.shape[2] // 2
+				real_cols_half = csi_combined.shape[3] // 2
 				zeropadded_rows_half = csi_zeropadded.shape[2] // 2
 				zeropadded_cols_half = csi_zeropadded.shape[1] // 2
-				csi_zeropadded[:,zeropadded_cols_half-real_cols_half:zeropadded_cols_half+real_cols_half,zeropadded_rows_half-real_rows_half:zeropadded_rows_half+real_rows_half,:] = np.swapaxes(csi_backlog_ht40[:,0,:,:,:], 1, 2)
+				csi_zeropadded[:,zeropadded_cols_half-real_cols_half:zeropadded_cols_half+real_cols_half,zeropadded_rows_half-real_rows_half:zeropadded_rows_half+real_rows_half,:] = np.swapaxes(csi_combined[:,0,:,:,:], 1, 2)
 				csi_zeropadded = np.fft.ifftshift(csi_zeropadded, axes = (1, 2))
 				beam_frequency_space = np.fft.fft2(csi_zeropadded, axes = (1, 2))
 				beam_frequency_space = np.fft.fftshift(beam_frequency_space, axes = (1, 2))
@@ -140,7 +147,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 				# real 2d spatial spectrum is too slow...
 				# we can use 2D FFT to get to beamspace, which of course is technically not correct
 				# (cannot separate 2D steering vector into Kronecker product of azimuth / elevation steering vectors)
-				beam_frequency_space = np.einsum("rcae,dbrcs->daes", self.steering_vectors_2d, csi_backlog_ht40, optimize = True)
+				beam_frequency_space = np.einsum("rcae,dbrcs->daes", self.steering_vectors_2d, csi_combined, optimize = True)
 
 			squared_power_by_beam = np.sum(np.abs(beam_frequency_space)**2, axis=(0, 3))**2
 			color_value = (squared_power_by_beam - np.min(squared_power_by_beam)) / (np.max(squared_power_by_beam) - np.min(squared_power_by_beam) + 1e-6)
@@ -157,11 +164,11 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 				wifi_image_rgb = matplotlib.colors.hsv_to_rgb(hsv)
 				alpha_channel = np.ones((*wifi_image_rgb.shape[:2], 1))
 				wifi_image_rgba = np.clip(np.concatenate((wifi_image_rgb, alpha_channel), axis=-1), 0, 1)
-				self.beamspace_power_imagedata = np.asarray(np.swapaxes(wifi_image_rgba, 0, 1).flatten() * 255, dtype = np.uint8)
+				self.beamspace_power_imagedata = np.asarray(np.swapaxes(wifi_image_rgba, 0, 1).ravel() * 255, dtype = np.uint8)
 			else:
 				self.beamspace_power = np.sum(np.abs(beam_frequency_space)**2, axis = (0, 3))
 				self.beamspace_power_imagedata = np.zeros(4 * self.beamspace_power.size, dtype = np.uint8)
-				self.beamspace_power_imagedata[1::4] = np.clip(np.swapaxes(color_value, 0, 1).flatten(), 0, 1) * 255
+				self.beamspace_power_imagedata[1::4] = np.clip(np.swapaxes(color_value, 0, 1).ravel(), 0, 1) * 255
 				self.beamspace_power_imagedata[3::4] = 255
 
 			self.beamspacePowerImagedataChanged.emit(self.beamspace_power_imagedata.tolist())

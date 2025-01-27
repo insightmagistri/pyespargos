@@ -54,8 +54,9 @@ class ClusteredCSI(object):
         self.complex_csi_htltf_higher = self.complex_csi_all[:,:,:,csi.csi_buf_t.htltf_higher.offset // 2:(csi.csi_buf_t.htltf_higher.offset + csi.csi_buf_t.htltf_higher.size) // 2].view()
         self.complex_csi_htltf_lower = self.complex_csi_all[:,:,:,csi.csi_buf_t.htltf_lower.offset // 2:(csi.csi_buf_t.htltf_lower.offset + csi.csi_buf_t.htltf_lower.size) // 2].view()
 
-        # Allocate memory for the RSSI values
+        # Allocate memory for the RSSI and noise floor values
         self.rssi_all = np.full(self.shape, fill_value = np.nan, dtype = np.float32)
+        self.noise_floor_all = np.full(self.shape, fill_value = np.nan, dtype = np.float32)
 
     def add_csi(self, board_num: int, esp_num: int, serialized_csi: csi.serialized_csi_t, csi_cplx: np.ndarray):
         """
@@ -81,6 +82,7 @@ class ClusteredCSI(object):
         self.csi_completion_state[board_num, row, column] = True
         self.csi_completion_state_all = np.all(self.csi_completion_state)
         self.rssi_all[board_num, row, column] = csi.wifi_pkt_rx_ctrl_t(serialized_csi.rx_ctrl).rssi
+        self.noise_floor_all[board_num, row, column] = csi.wifi_pkt_rx_ctrl_t(serialized_csi.rx_ctrl).noise_floor
 
     def deserialize_csi_lltf(self):
         """
@@ -216,6 +218,14 @@ class ClusteredCSI(object):
         :return: The source MAC address of the WiFi packet
         """
         return self.source_mac
+
+    def get_noise_floor(self):
+        """
+        Get the noise floor of the WiFi packet.
+
+        :return: The noise floor of the WiFi packet
+        """
+        return self.noise_floor_all
 
     def get_seq_ctrl(self):
         """

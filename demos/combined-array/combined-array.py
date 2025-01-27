@@ -28,34 +28,11 @@ class EspargosDemoCombinedArray(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-b", "--backlog", type = int, default = 20, help = "Number of CSI datapoints to average over in backlog")
 		self.args = parser.parse_args()
 
-		# Parse configuration
-		with open(self.args.conf, "r") as conffile:
-			self.conf = yaml.safe_load(conffile)
-
-		# Make sure array is square
-		self.n_rows = len(self.conf["array"])
-		self.n_cols = len(self.conf["array"][0])
-		for row in self.conf["array"]:
-			assert(len(row) == self.n_cols)
-
-		# Build an indexing matrix. The matrix contains the indices to get from the flattened representation
-		# of the CSI of all subarrays to the CSI for the large array.
-		self.indexing_matrix = np.zeros((self.n_rows, self.n_cols), dtype = int)
-		self.boardnames = list(self.conf["boards"].keys())
-
-		for row in range(self.n_rows):
-			for col in range(self.n_cols):
-				name, index_row, index_col = self.conf["array"][row][col].split(".")
-				offset_board = self.boardnames.index(name) * espargos.constants.ANTENNAS_PER_BOARD
-				offset_row = int(index_row) * espargos.constants.ANTENNAS_PER_ROW
-				self.indexing_matrix[row, col] = offset_board + offset_row + int(index_col)
-
-		# Get cable lengths and velocity factors
-		cable_lengths = np.asarray([board["cable"]["length"] for board in self.conf["boards"].values()])
-		cable_velocity_factors = np.asarray([board["cable"]["velocity_factor"] for board in self.conf["boards"].values()])
+		# Load config file
+		self.indexing_matrix, board_names_hosts, cable_lengths, cable_velocity_factors, self.n_rows, self.n_cols = espargos.util.parse_combined_array_config(self.args.conf)
 
 		# Set up ESPARGOS pool and backlog
-		self.pool = espargos.Pool([espargos.Board(board["host"]) for board in self.conf["boards"].values()])
+		self.pool = espargos.Pool([espargos.Board(host) for host in board_names_hosts.values()])
 		self.pool.start()
 		self.pool.calibrate(duration = 4, per_board = False, cable_lengths = cable_lengths, cable_velocity_factors = cable_velocity_factors)
 		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog)
@@ -80,11 +57,7 @@ class EspargosDemoCombinedArray(PyQt6.QtWidgets.QApplication):
 	def updateRequest(self):
 		csi_backlog_ht40 = self.backlog.get_ht40()
 
-		csi_ht40_shifted = espargos.util.shift_to_firstpeak(csi_backlog_ht40)
-		csi_ht40_by_array_row_col = np.moveaxis(csi_ht40_shifted, 0, -1)
-		csi_ht40_by_antenna = np.reshape(csi_ht40_by_array_row_col, (csi_ht40_by_array_row_col.shape[0] * csi_ht40_by_array_row_col.shape[1] * csi_ht40_by_array_row_col.shape[2], csi_ht40_by_array_row_col.shape[3], csi_ht40_by_array_row_col.shape[4]))
-		csi_largearray = csi_ht40_by_antenna[self.indexing_matrix]
-		csi_largearray = np.moveaxis(csi_largearray, -1, 0)
+		csi_largearray = espargos.util.build_combined_array_csi(self.indexing_matrix, csi_backlog_ht40)
 
 		R = np.einsum("dnis,dmjs->nimj", csi_largearray, np.conj(csi_largearray))
 		R = np.reshape(R, (R.shape[0] * R.shape[1], R.shape[2] * R.shape[3]))
