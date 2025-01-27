@@ -95,7 +95,12 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	@PyQt6.QtCore.pyqtSlot()
 	def updateSpatialSpectrum(self):
 		csi_backlog_ht40 = self.backlog.get_ht40()
+		rssi_backlog = self.backlog.get_rssi()
 
+		# Weight CSI data with RSSI
+		csi_backlog_ht40 = csi_backlog_ht40 * 10**(rssi_backlog[..., np.newaxis] / 20)
+
+		# Get rid of gap in CSI data around DC
 		espargos.util.interpolate_ht40_gap(csi_backlog_ht40)
 
 		# Shift all CSI datapoints in time so that LoS component arrives at the same time

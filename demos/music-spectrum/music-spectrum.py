@@ -57,6 +57,12 @@ class EspargosDemoMusicSpectrum(PyQt6.QtWidgets.QApplication):
 	@PyQt6.QtCore.pyqtSlot(PyQt6.QtCharts.QLineSeries, PyQt6.QtCharts.QValueAxis)
 	def updateSpatialSpectrum(self, series, axis):
 		csi_backlog_ht40 = self.backlog.get_ht40()
+		rssi_backlog = self.backlog.get_rssi()
+
+		# Weight CSI data with RSSI
+		csi_backlog_ht40 = csi_backlog_ht40 * 10**(rssi_backlog[..., np.newaxis] / 20)
+
+		# Shift to first peak if requested (TODO: remove this, was only needed when we did not have time synchronization across sensors)
 		csi_ht40_shifted = espargos.util.shift_to_firstpeak(csi_backlog_ht40) if self.args.shift_peak else csi_backlog_ht40
 
 		# Compute array covariance matrix R over all backlog datapoints, all rows and all subcarriers

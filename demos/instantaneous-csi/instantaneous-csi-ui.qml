@@ -55,11 +55,11 @@ ApplicationWindow {
 					id: csiAmplitudeAxis
 
 					min: 0
-					max: 1
+					max: 0.02
 					titleText: (backend.timeDomain || backend.superResolution) ? "<font color=\"#e0e0e0\">Power [linear]</font>" : "<font color=\"#e0e0e0\">Power [dB]</font>"
 					titleFont.bold: false
 					gridLineColor: "#c0c0c0"
-					tickInterval: backend.timeDomain ? 2000 : (backend.superResolution ? 0.5 : 5)
+					tickInterval: backend.timeDomain ? 10 : (backend.superResolution ? 0.5 : 5)
 					tickType: ValueAxis.TicksDynamic
 					labelsColor: "#e0e0e0"
 				}

@@ -38,6 +38,10 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog)
 		self.backlog.start()
 
+		# Value range handling
+		self.stable_power_minimum = None
+		self.stable_power_maximum = None
+
 		# Qt setup
 		self.aboutToQuit.connect(self.onAboutToQuit)
 		self.engine = PyQt6.QtQml.QQmlApplicationEngine()
@@ -64,10 +68,20 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 
 		return super().exec()
 
+	def _interpolate_axis_range(self, previous, new):
+		if previous is None:
+			return new
+		else:
+			return (previous * 0.97 + new * 0.03)
+
 	# list parameters contain PyQt6.QtCharts.QLineSeries
 	@PyQt6.QtCore.pyqtSlot(list, list, PyQt6.QtCharts.QValueAxis)
 	def updateCSI(self, powerSeries, phaseSeries, axis):
 		csi_backlog_ht40 = self.backlog.get_ht40()
+		rssi_backlog = self.backlog.get_rssi()
+
+		# Weight CSI data with RSSI
+		csi_backlog_ht40 = csi_backlog_ht40 * 10**(rssi_backlog[..., np.newaxis] / 20)
 
 		# Fill "gap" in subcarriers with interpolated data
 		espargos.util.interpolate_ht40_gap(csi_backlog_ht40)
@@ -87,8 +101,8 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 			superres_pdps_flat = np.reshape(superres_pdps, (-1, superres_pdps.shape[-1]))
 
 			superres_pdps_flat = superres_pdps_flat / np.max(superres_pdps_flat)
-			axis.setMin(0)
-			axis.setMax(1.1)
+			self.stable_power_minimum = 0
+			self.stable_power_maximum = 1.1
 
 			for pwr_series, mvdr_pdp in zip(powerSeries, superres_pdps_flat):
 				pwr_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(superres_delays, mvdr_pdp)])
@@ -97,7 +111,10 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 			csi_flat = np.concatenate((csi_flat, zero_padding), axis = 1)
 			csi_flat = np.fft.fftshift(np.fft.ifft(np.fft.ifftshift(csi_flat, axes = -1), axis = -1), axes = -1)
 			subcarrier_range_zeropadded = np.arange(-csi_flat.shape[-1] // 2, csi_flat.shape[-1] // 2) / self.args.oversampling
-			csi_power = np.abs(csi_flat)
+			csi_power = (csi_flat.shape[1] * np.abs(csi_flat))**2
+			self.stable_power_minimum = 0
+			self.stable_power_maximum = self._interpolate_axis_range(self.stable_power_maximum, np.max(csi_power) * 1.1)
+
 			axis.setMin(0)
 			axis.setMax(csi_flat.shape[-1] / np.sqrt(2) / self.args.oversampling**2)
 			csi_phase = np.angle(csi_flat * np.exp(-1.0j * np.angle(csi_flat[0, len(csi_flat[0]) // 2])))
@@ -107,13 +124,17 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 				phase_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(subcarrier_range_zeropadded, ant_phase)])
 		else:
 			csi_power = 20 * np.log10(np.abs(csi_flat) + 0.00001)
-			axis.setMin(10)
-			axis.setMax(45)
+			self.stable_power_minimum = self._interpolate_axis_range(self.stable_power_minimum, np.min(csi_power) - 3)
+			self.stable_power_maximum = self._interpolate_axis_range(self.stable_power_maximum, np.max(csi_power) + 3)
 			csi_phase = np.angle(csi_flat * np.exp(-1.0j * np.angle(csi_flat[0, csi_flat.shape[1] // 2])))
 
 			for pwr_series, phase_series, ant_pwr, ant_phase in zip(powerSeries, phaseSeries, csi_power, csi_phase):
 				pwr_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(self.subcarrier_range, ant_pwr)])
 				phase_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(self.subcarrier_range, ant_phase)])
+
+		axis.setMin(self.stable_power_minimum)
+		axis.setMax(self.stable_power_maximum)
+
 
 	def onAboutToQuit(self):
 		self.pool.stop()
