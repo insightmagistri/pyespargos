@@ -135,7 +135,6 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		axis.setMin(self.stable_power_minimum)
 		axis.setMax(self.stable_power_maximum)
 
-
 	def onAboutToQuit(self):
 		self.pool.stop()
 		self.backlog.stop()

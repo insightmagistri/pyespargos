@@ -36,6 +36,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-ra", "--resolution-azimuth", type = int, default = 64, help = "Beamspace resolution for azimuth angle")
 		parser.add_argument("-re", "--resolution-elevation", type = int, default = 64, help = "Beamspace resolution for elevation angle")
 		parser.add_argument("-md", "--max-delay", type = float, default = 0.2, help = "Maximum delay in samples for colorizing delay")
+		parser.add_argument("-a", "--additional-calibration", type = str, default = "", help = "File to read additional phase calibration results from")
 		display_group = parser.add_mutually_exclusive_group()
 		display_group.add_argument("-f", "--beamspace-fft", default = False, help = "Approximate beamspace transform via FFT (faster, but inaccurate)", action = "store_true")
 		display_group.add_argument("-m", "--music", default = False, help = "Display spatial spectrum computed via MUSIC algorithm", action = "store_true")
@@ -43,6 +44,11 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 
 		# Load config file
 		self.indexing_matrix, board_names_hosts, cable_lengths, cable_velocity_factors, self.n_rows, self.n_cols = espargos.util.parse_combined_array_config(self.args.conf)
+
+		# Load additional calibration data from file, if provided
+		self.additional_calibration = None
+		if len(self.args.additional_calibration) > 0:
+			self.additional_calibration = np.load(self.args.additional_calibration)
 
 		# Set up ESPARGOS pool and backlog
 		self.pool = espargos.Pool([espargos.Board(host) for host in board_names_hosts.values()])
@@ -99,6 +105,11 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	def updateSpatialSpectrum(self):
 		csi_backlog_ht40 = self.backlog.get_ht40()
 		rssi_backlog = self.backlog.get_rssi()
+
+		# Apply additional calibration (only phase)
+		if self.additional_calibration is not None:
+			# TODO: espargos.pool should natively support additional calibration
+			csi_backlog_ht40 = np.einsum("dbrcs,brcs->dbrcs", csi_backlog_ht40, np.exp(-1.0j * np.angle(self.additional_calibration)))
 
 		# Weight CSI data with RSSI
 		csi_backlog_ht40 = csi_backlog_ht40 * 10**(rssi_backlog[..., np.newaxis] / 20)

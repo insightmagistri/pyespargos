@@ -138,7 +138,7 @@ def shift_to_firstpeak(csi_datapoints: np.ndarray, max_delay_taps = 3, search_re
 
 	return shift_to_firstpeak * csi_datapoints
 
-def shift_to_firstpeak_sync(csi_datapoints: np.ndarray, max_delay_taps = 3, search_resolution = 40, peak_threshold = 0.4):
+def shift_to_firstpeak_sync(csi_datapoints: np.ndarray, max_delay_taps = 3, search_resolution = 40, peak_threshold = 0.1):
 	"""
 	Shifts the CSI data so that the first peak of the channel impulse response is at time 0.
 	All CSI datapoints are shifted by the same amount, i.e., requires synchronized CSI.

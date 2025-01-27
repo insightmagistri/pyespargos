@@ -21,10 +21,10 @@ CALIB_TRACE_LENGTH = [
 ]
 "Calibration signal trace lengths on ESPARGOS PCB"
 
-#CALIB_TRACE_EMPIRICAL_ERROR = [
-#	[0.0005, 0.0057, 0.0000, 0.0058],
-#	[0.0093, 0.0117, 0.0073, 0.0097]
-#]
+CALIB_TRACE_EMPIRICAL_ERROR = [
+	[0.0000, 0.0025, 0.0007, 0.0047],
+	[0.0023, 0.0055, 0.0018, 0.0016]
+]
 
 CALIB_TRACE_DIELECTRIC_CONSTANT = 4.3
 "Dielectric constant of the sensor PCB material"
