@@ -34,16 +34,9 @@ ApplicationWindow {
 		onActivated: window.close()
 	}
 
-	RowLayout {
-		anchors.fill: parent
-		height: parent.height
-		width: parent.width
 
-		CameraOverlay {
-			Layout.alignment: Qt.AlignCenter
-			Layout.fillWidth: true
-			Layout.fillHeight: true
-		}
+	CameraOverlay {
+		anchors.fill: parent
 	}
 
 	footer: Pane {

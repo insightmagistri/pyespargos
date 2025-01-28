@@ -1,7 +1,10 @@
 import QtQuick
 import QtMultimedia
+import QtQuick.Layouts
 
-Item {
+Rectangle {
+	color: "black"
+
 	CaptureSession {
 		id: captureSession
 		camera: WebCam
@@ -10,7 +13,7 @@ Item {
 
 	VideoOutput {
 		id: videoOutput
-		anchors.fill: parent
+        anchors.fill: parent
 	}
 
 	ShaderEffect {
