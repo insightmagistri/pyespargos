@@ -73,8 +73,9 @@ wifi_pkt_rx_ctrl_t_size = 36
 # 6-58: lltf
 # 60-65: lltf_guard_above
 # 66-122: htltf primary
-# 123-133: htltf_guard
+# 123-133: htltf_guard_below
 # 134-190: htltf secondary
+# 191-192: htltf_guard_above
 class csi_buf_t(ctypes.LittleEndianStructure):
     """
     A ctypes structure representing the CSI buffer as produced by the ESP32.
@@ -88,9 +89,10 @@ class csi_buf_t(ctypes.LittleEndianStructure):
         ("lltf_guard_below", ctypes.c_int8 * (6 * 2)), # all zeros
         ("lltf", ctypes.c_int8 * (53 * 2)),
         ("lltf_guard_above", ctypes.c_int8 * (7 * 2)), # all zeros
-        ("htltf_higher",  ctypes.c_int8 * (57 * 2)),
-        ("htltf_guard",  ctypes.c_int8 * (11 * 2)), # all zeros
-        ("htltf_lower",  ctypes.c_int8 * (57 * 2))
+        ("htltf_higher", ctypes.c_int8 * (57 * 2)),
+        ("htltf_guard_below", ctypes.c_int8 * (11 * 2)), # all zeros
+        ("htltf_lower", ctypes.c_int8 * (57 * 2)),
+        ("htltf_guard_above", ctypes.c_int8 * (1 * 2))
     ]
 
     def __new__(self, buf=None):
@@ -131,7 +133,8 @@ class serialized_csi_t(ctypes.LittleEndianStructure):
         ("timestamp", ctypes.c_uint32),
         ("is_calib", ctypes.c_bool),
         ("first_word_invalid", ctypes.c_bool),
-        ("buf", ctypes.c_int8 * (ctypes.sizeof(csi_buf_t)))
+        ("buf", ctypes.c_int8 * (ctypes.sizeof(csi_buf_t))),
+        ("global_timestamp_us", ctypes.c_uint64)
     ]
 
     def __new__(self, buf=None):

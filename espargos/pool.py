@@ -256,7 +256,12 @@ class ClusteredCSI(object):
         rxstart_time_cyc = csi.wifi_pkt_rx_ctrl_t(serialized_csi.rx_ctrl).rxstart_time_cyc
         rxstart_time_cyc_dec = csi.wifi_pkt_rx_ctrl_t(serialized_csi.rx_ctrl).rxstart_time_cyc_dec
         rxstart_time_cyc_dec = 2048 - rxstart_time_cyc_dec if rxstart_time_cyc_dec >= 1024 else rxstart_time_cyc_dec
-        hw_latched_timestamp_ns = serialized_csi.timestamp * 1000
+
+        # Backwards compatibility: Only use global timestamp if it is nonzero
+        us_timestamp = serialized_csi.timestamp
+        if serialized_csi.global_timestamp_us != 0:
+            us_timestamp = serialized_csi.global_timestamp_us
+        hw_latched_timestamp_ns = us_timestamp * 1000
 
         # "official" formula by Espressif:
         #timestamp_ns = np.float128(serialized_csi.timestamp * 1000 + ((rxstart_time_cyc * 12500) // 1000) + ((rxstart_time_cyc_dec * 1562) // 1000) - 20800)
