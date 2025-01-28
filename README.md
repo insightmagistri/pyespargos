@@ -55,6 +55,10 @@ pip install .
 ```bash
 sudo pip install . --break-system-packages
 ```
+* If you want to make changes the `pyespargos`, it is recommended to install it in editable mode. This way, if you make changes to the `espargos` library, they immediately apply system-wide:
+```bash
+sudo pip install . -e --break-system-packages
+```
 * Import the `espargos` package in your Python application. Use this minimal sample code to get started:
 ```python
 #!/usr/bin/env python3
@@ -109,12 +113,7 @@ pool.stop()
 * Now we know the initial phase of the local oscillator (LO) signal on every ESP32.
 * With *pyespargos*, this calibration can be performed with just one command: `pool.calibrate()`
 * In our observations, this initial phase offset between antennas remains relatively static over time, so one calibration of ESPARGOS should be sufficient.
-
-### Sampling Time Offset
-* While ESPARGOS provides phase (= LO signal) synchronization between antennas, it does not provide time synchronization (= ADC sampling clock).
-* This is because the receiver hardware in every ESP32 applies a receiver-specific sampling time offset correction to the received frame, but the [esp32-wifi-lib](https://github.com/espressif/esp32-wifi-lib) does not expose this information to the application firmware (OUTDATED).
-* However, this is not a hardware limitation as the ESP32 clearly supports precise timestamping (it supports 802.11mc FTM).
-* There is [an open esp-idf issue](https://github.com/espressif/esp-idf/issues/9843) regarding this problem: We need to get precise reception timestamps from the WiFi binary blob.
+* Additionally, we we can obtain very precise packet reception timestamps, which provides time synchronization.
 
 ## Additional Non-Public Demo Applications
 * `dataset-recorder`: Application to record ESPARGOS datasets for publication on [https://espargos.net/datasets/](https://espargos.net/datasets/). Please contact me to get access.
