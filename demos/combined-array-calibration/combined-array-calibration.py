@@ -26,14 +26,14 @@ class EspargosDemoCombinedArrayCalibration(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-c", "--color-by-sensor-index", default = False, help = "Color by sensor index *within* same board, not by board index", action = "store_true")
 		parser.add_argument("-u", "--update-rate", type = float, default = 0.01, help = "Rate by which calibration values are updated in exponential decay filter")
 		parser.add_argument("-b", "--boardwise", default = False, help = "Do not calibrate per sensor, calibrate only per board", action = "store_true")
-		parser.add_argument("-o", "--outfile", type = str, default = False, help = "File to write additional calibration results to")
+		parser.add_argument("-o", "--outfile", type = str, default = "", help = "File to write additional calibration results to")
 		self.args = parser.parse_args()
 
 		# Set up ESPARGOS pool and backlog
 		self.pool = espargos.Pool([espargos.Board(host) for host in self.args.hosts.split(",")])
-		self.pool.add_csi_callback(self.onCSI)
 		self.pool.start()
 		self.pool.calibrate(duration = 3, per_board = False)
+		self.pool.add_csi_callback(self.onCSI)
 
 		self.subcarrier_count = (espargos.csi.csi_buf_t.htltf_lower.size + espargos.csi.HT40_GAP_SUBCARRIERS * 2 + espargos.csi.csi_buf_t.htltf_higher.size) // 2
 		self.subcarrier_range = np.arange(-self.subcarrier_count // 2, self.subcarrier_count // 2)
@@ -93,7 +93,8 @@ class EspargosDemoCombinedArrayCalibration(PyQt6.QtWidgets.QApplication):
 				phase_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(self.subcarrier_range, ant_phase)])
 
 	def onAboutToQuit(self):
-		np.save(self.args.outfile, self.calibration_values)
+		if len(self.args.outfile) > 0:
+			np.save(self.args.outfile, self.calibration_values)
 		self.pool.stop()
 		self.engine.deleteLater()
 
