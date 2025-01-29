@@ -78,6 +78,7 @@ Rectangle {
 
 		property bool musicMode: backend.music
 		property bool fftMode: backend.isFFTBeamspace
+		property vector2d fov: Qt.vector2d(backend.fovAzimuth, backend.fovElevation)
 
 		fragmentShader: "spatialspectrum.qsb"
 

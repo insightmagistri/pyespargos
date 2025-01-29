@@ -30,10 +30,8 @@ layout(std140, binding = 0) uniform buf {
 
 	bool musicMode;
 	bool fftMode;
+	vec2 fov;
 };
-
-// Camera properties
-const vec2 fov = vec2(78, 43);
 
 // Instensity value limits in dB
 const float minMUSICIntensity = -10;

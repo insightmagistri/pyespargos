@@ -48,6 +48,8 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-i", "--no-interpolation", default = False, help = "Do not use datapoint interpolation to reduce computational complexity (can slightly improve appearance)", action = "store_true")
 		parser.add_argument("-ra", "--resolution-azimuth", type = int, default = 64, help = "Beamspace resolution for azimuth angle")
 		parser.add_argument("-re", "--resolution-elevation", type = int, default = 32, help = "Beamspace resolution for elevation angle")
+		parser.add_argument("-fa", "--fov-azimuth", type = int, default = 78, help = "Camera field of view in azimuth direction")
+		parser.add_argument("-fe", "--fov-elevation", type = int, default = 43, help = "Camera field of view in elevation direction")
 		parser.add_argument("-md", "--max-delay", type = float, default = 0.2, help = "Maximum delay in samples for colorizing delay")
 		parser.add_argument("-a", "--additional-calibration", type = str, default = "", help = "File to read additional phase calibration results from")
 		display_group = parser.add_mutually_exclusive_group()
@@ -249,6 +251,14 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	@PyQt6.QtCore.pyqtProperty(int, constant=True)
 	def resolutionElevation(self):
 		return self.args.resolution_elevation
+
+	@PyQt6.QtCore.pyqtProperty(int, constant=True)
+	def fovAzimuth(self):
+		return self.args.fov_azimuth
+	
+	@PyQt6.QtCore.pyqtProperty(int, constant=True)
+	def fovElevation(self):
+		return self.args.fov_elevation
 
 	@PyQt6.QtCore.pyqtProperty(bool, constant=True)
 	def isFFTBeamspace(self):
