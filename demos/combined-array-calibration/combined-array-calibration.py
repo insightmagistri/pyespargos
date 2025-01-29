@@ -15,13 +15,11 @@ import PyQt6.QtCore
 import PyQt6.QtQml
 
 class EspargosDemoCombinedArrayCalibration(PyQt6.QtWidgets.QApplication):
-	updateColors = PyQt6.QtCore.pyqtSignal(list)
-
 	def __init__(self, argv):
 		super().__init__(argv)
 
 		# Parse command line arguments
-		parser = argparse.ArgumentParser(description = "ESPARGOS Demo: Combined ESPARGOS arrays")
+		parser = argparse.ArgumentParser(description = "ESPARGOS Demo: Combined ESPARGOS arrays calibration")
 		parser.add_argument("hosts", type = str, help = "Comma-separated list of host addresses (IP or hostname) of ESPARGOS controllers making up combined array")
 		parser.add_argument("-c", "--color-by-sensor-index", default = False, help = "Color by sensor index *within* same board, not by board index", action = "store_true")
 		parser.add_argument("-u", "--update-rate", type = float, default = 0.01, help = "Rate by which calibration values are updated in exponential decay filter")

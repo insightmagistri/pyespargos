@@ -82,7 +82,7 @@ ApplicationWindow {
 						let antennas = backend.sensorCount
 
 						for (let ant = 0; ant < antennas; ++ant) {
-							let phaseSeries = tdoasOverTime.createSeries(ChartView.SeriesTypeLine, "tx-" + ant, tdoasOverTimeXAxis, tdoasOverTimeYAxis)
+							let phaseSeries = tdoasOverTime.createSeries(ChartView.SeriesTypeLine, "rx-" + ant, tdoasOverTimeXAxis, tdoasOverTimeYAxis)
 							phaseSeries.pointsVisible = false
 							phaseSeries.color = colorCycle[ant % colorCycle.length]
 							phaseSeries.useOpenGL = true
