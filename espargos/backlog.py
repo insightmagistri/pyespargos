@@ -14,15 +14,18 @@ class CSIBacklog(object):
     :param calibrate: Apply calibration to CSI data (default: True)
     :param size: Size of the ringbuffer (default: 100)
     """
-    def __init__(self, pool, enable_ht40 = True, calibrate = True, size = 100):
+    def __init__(self, pool, enable_lltf = True, enable_ht40 = True, calibrate = True, size = 100):
         self.logger = logging.getLogger("pyespargos.backlog")
 
         self.pool = pool
         self.size = size
+        self.enable_lltf = enable_lltf
         self.enable_ht40 = enable_ht40
         self.calibrate = calibrate
 
         self.storage_ht40 = np.zeros((size,) + self.pool.get_shape() + ((csi.csi_buf_t.htltf_lower.size + csi.HT40_GAP_SUBCARRIERS * 2 + csi.csi_buf_t.htltf_higher.size) // 2,), dtype = np.complex64)
+        self.storage_lltf = np.zeros((size,) + self.pool.get_shape() + (csi.csi_buf_t.lltf.size // 2,), dtype = np.complex64)
+
         self.storage_timestamps = np.zeros((size,) + self.pool.get_shape(), dtype = np.float128)
         self.storage_rssi = np.zeros((size,) + self.pool.get_shape(), dtype = np.float32)
         self.head = 0
@@ -37,21 +40,33 @@ class CSIBacklog(object):
                     return
 
             # Store timestamp
-            sensor_timestamps = clustered_csi.get_sensor_timestamps()
+            sensor_timestamps_raw = clustered_csi.get_sensor_timestamps()
+            sensor_timestamps = np.copy(sensor_timestamps_raw)
             if self.calibrate:
                 assert(self.pool.get_calibration() is not None)
                 sensor_timestamps = self.pool.get_calibration().apply_timestamps(sensor_timestamps)
             self.storage_timestamps[self.head] = sensor_timestamps
 
-            # Store HT40 CSI if applicable
-            sensor_timestamps_raw = clustered_csi.get_sensor_timestamps()
-            if self.enable_ht40 and clustered_csi.is_ht40():
-                csi_ht40 = clustered_csi.deserialize_csi_ht40()
+            # Store LLTF CSI
+            if self.enable_lltf:
+                csi_lltf = clustered_csi.deserialize_csi_lltf()
                 if self.calibrate:
                     assert(self.pool.get_calibration() is not None)
-                    csi_ht40 = self.pool.get_calibration().apply_ht40(csi_ht40, sensor_timestamps_raw)
+                    csi_lltf = self.pool.get_calibration().apply_lltf(csi_lltf, sensor_timestamps_raw)
 
-                self.storage_ht40[self.head] = csi_ht40
+                self.storage_lltf[self.head] = csi_lltf
+
+            # Store HT40 CSI if applicable
+            if self.enable_ht40:
+                if clustered_csi.is_ht40():
+                    csi_ht40 = clustered_csi.deserialize_csi_ht40()
+                    if self.calibrate:
+                        assert(self.pool.get_calibration() is not None)
+                        csi_ht40 = self.pool.get_calibration().apply_ht40(csi_ht40, sensor_timestamps_raw)
+
+                    self.storage_ht40[self.head] = csi_ht40
+                else:
+                    self.logger.warning(f"Received non-HT40 frame even though HT40 is enabled")
 
             # Store RSSI
             self.storage_rssi[self.head] = clustered_csi.get_rssi()
@@ -73,6 +88,14 @@ class CSIBacklog(object):
     def add_update_callback(self, cb):
         """ Add a callback that is called when new CSI data is added to the backlog """
         self.callbacks.append(cb)
+
+    def get_lltf(self):
+        """
+        Retrieve LLTF CSI data from the ringbuffer
+
+        :return: LLTF CSI data, oldest first
+        """
+        return np.roll(self.storage_lltf, -self.head, axis = 0)[-self.filllevel:]
 
     def get_ht40(self):
         """

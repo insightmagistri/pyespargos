@@ -61,7 +61,7 @@ ApplicationWindow {
 					titleText: "<font color=\"#e0e0e0\">Subcarrier Index</font>"
 					titleFont.bold: false
 					gridLineColor: "#c0c0c0"
-					tickInterval: 30
+					tickInterval: 20
 					tickType: ValueAxis.TicksDynamic
 					labelsColor: "#e0e0e0"
 				},

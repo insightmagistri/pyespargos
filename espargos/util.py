@@ -79,6 +79,17 @@ def get_frequencies_ht40(primary_channel: int, secondary_channel: int):
 	assert(ht40_subcarrier_count % 2 == 1)
 	return center_ht40 + np.arange(-ht40_subcarrier_count // 2, ht40_subcarrier_count // 2) * constants.WIFI_SUBCARRIER_SPACING
 
+def get_frequencies_lltf(channel: int):
+	"""
+	Returns the frequencies of the subcarriers in an 2.4GHz 802.11g 20MHz wide WiFi channel.
+
+	:param primary_channel: The primary channel number (= primary channel, but there is only one channel).
+	:return: The frequencies of the subcarriers, in Hz, NumPy array.
+	"""
+	center_lltf = constants.WIFI_CHANNEL1_FREQUENCY + constants.WIFI_CHANNEL_SPACING * (channel - 1)
+	lltf_subcarrier_count = csi.csi_buf_t.lltf.size // 2
+	return center_lltf + np.arange(-lltf_subcarrier_count // 2, lltf_subcarrier_count // 2) * constants.WIFI_SUBCARRIER_SPACING
+
 def get_calib_trace_wavelength(frequencies: np.ndarray):
 	"""
 	Returns the wavelength of the subcarriers on the calibration traces on the ESPARGOS sensor board.
@@ -112,6 +123,18 @@ def interpolate_ht40_gap(csi_ht40: np.ndarray):
 	right = csi_ht40[..., index_right]
 	interp = (missing_indices - index_left) / (index_right - index_left)
 	csi_ht40[..., missing_indices] = interp * right[..., np.newaxis] + (1 - interp) * left[..., np.newaxis]
+
+def interpolate_lltf_gap(csi_lltf: np.ndarray):
+	"""
+	Apply linear interpolation to determine realistic values for the subcarrier channel coefficients in the gap between the two halves of the LLTF.
+
+	:param csi_lltf: The CSI data for an LLTF channel. Complex-valued NumPy array with arbitrary shape, but the last dimension must be the subcarriers.
+	:return: The CSI data with the values in the gap filled in.
+	"""
+	index_left = csi_lltf.shape[-1] // 2 - 1
+	index_right = csi_lltf.shape[-1] // 2 + 1
+	missing_index = csi_lltf.shape[-1] // 2
+	csi_lltf[..., missing_index] = (csi_lltf[..., index_left] + csi_lltf[..., index_right]) / 2
 
 def shift_to_firstpeak(csi_datapoints: np.ndarray, max_delay_taps = 3, search_resolution = 40, peak_threshold = 0.4):
 	"""

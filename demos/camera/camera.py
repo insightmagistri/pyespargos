@@ -52,6 +52,8 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-fe", "--fov-elevation", type = int, default = 41, help = "Camera field of view in elevation direction")
 		parser.add_argument("-md", "--max-delay", type = float, default = 0.2, help = "Maximum delay in samples for colorizing delay")
 		parser.add_argument("-a", "--additional-calibration", type = str, default = "", help = "File to read additional phase calibration results from")
+		parser.add_argument("-l", "--lltf", default = False, help = "Use only CSI from L-LTF", action = "store_true")
+		parser.add_argument("--mac-filter", type = str, default = "", help = "Only display CSI data from given MAC address")
 		display_group = parser.add_mutually_exclusive_group()
 		display_group.add_argument("-f", "--no-beamspace-fft", default = False, help = "Do NOT approximate beamspace transform via FFT (usually slower)", action = "store_true")
 		display_group.add_argument("-m", "--music", default = False, help = "Display spatial spectrum computed via MUSIC algorithm", action = "store_true")
@@ -69,7 +71,8 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		self.pool = espargos.Pool([espargos.Board(host) for host in board_names_hosts.values()])
 		self.pool.start()
 		self.pool.calibrate(duration = 3, per_board = False, cable_lengths = cable_lengths, cable_velocity_factors = cable_velocity_factors)
-		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog)
+		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog, enable_lltf = self.args.lltf, enable_ht40 = not self.args.lltf)
+		self.backlog.set_mac_filter("^" + self.args.mac_filter.replace(":", "").replace("-", ""))
 		self.backlog.start()
 
 		# Qt setup
@@ -118,26 +121,29 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 
 	@PyQt6.QtCore.pyqtSlot()
 	def updateSpatialSpectrum(self):
-		csi_backlog_ht40 = self.backlog.get_ht40()
+		csi_backlog = self.backlog.get_lltf() if self.args.lltf else self.backlog.get_ht40()
 		rssi_backlog = self.backlog.get_rssi()
 
 		# Apply additional calibration (only phase)
 		if self.additional_calibration is not None:
 			# TODO: espargos.pool should natively support additional calibration
-			csi_backlog_ht40 = np.einsum("dbrcs,brcs->dbrcs", csi_backlog_ht40, np.exp(-1.0j * np.angle(self.additional_calibration)))
+			csi_backlog = np.einsum("dbrcs,brcs->dbrcs", csi_backlog, np.exp(-1.0j * np.angle(self.additional_calibration)))
 
 		# Weight CSI data with RSSI
-		csi_backlog_ht40 = csi_backlog_ht40 * 10**(rssi_backlog[..., np.newaxis] / 20)
+		csi_backlog = csi_backlog * 10**(rssi_backlog[..., np.newaxis] / 20)
 
 		# Build combined array CSI data and add fake array index dimension
-		csi_combined = espargos.util.build_combined_array_csi(self.indexing_matrix, csi_backlog_ht40)
+		csi_combined = espargos.util.build_combined_array_csi(self.indexing_matrix, csi_backlog)
 		csi_combined = csi_combined[:,np.newaxis,:,:,:]
 
 		# Get rid of gap in CSI data around DC
-		espargos.util.interpolate_ht40_gap(csi_combined)
+		if self.args.lltf:
+			espargos.util.interpolate_lltf_gap(csi_combined)
+		else:
+			espargos.util.interpolate_ht40_gap(csi_combined)
 
 		# Shift all CSI datapoints in time so that LoS component arrives at the same time
-		csi_combined = espargos.util.shift_to_firstpeak_sync(csi_combined)
+		csi_combined = espargos.util.shift_to_firstpeak_sync(csi_combined, peak_threshold = (0.4 if self.args.lltf else 0.1))
 
 		# For computational efficiency reasons, reduce number of datapoints to one by interpolating over all datapoints
 		if not self.args.no_interpolation:

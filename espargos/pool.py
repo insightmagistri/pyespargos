@@ -275,6 +275,7 @@ class CSICalibration(object):
     def __init__(self,
                  channel_primary: int,
                  channel_secondary: int,
+                 calibration_values_lltf: np.ndarray,
                  calibration_values_ht40: np.ndarray,
                  timestamp_calibration_values: np.ndarray,
                  board_cable_lengths = None,
@@ -294,35 +295,45 @@ class CSICalibration(object):
         """
         self.channel_primary = channel_primary
         self.channel_secondary = channel_secondary
+        self.frequencies_lltf = util.get_frequencies_lltf(channel_primary)
         self.frequencies_ht40 = util.get_frequencies_ht40(channel_primary, channel_secondary)
-        wavelengths = util.get_calib_trace_wavelength(self.frequencies_ht40).astype(calibration_values_ht40.dtype)
+        wavelengths_lltf = util.get_calib_trace_wavelength(self.frequencies_lltf).astype(calibration_values_lltf.dtype)
+        wavelengths_ht40 = util.get_calib_trace_wavelength(self.frequencies_ht40).astype(calibration_values_ht40.dtype)
         tracelengths = np.asarray(constants.CALIB_TRACE_LENGTH, dtype = calibration_values_ht40.dtype)# - np.asarray(constants.CALIB_TRACE_EMPIRICAL_ERROR)
-        prop_calib_each_board = np.exp(-1.0j * 2 * np.pi * tracelengths[:,:,np.newaxis] / wavelengths[np.newaxis, np.newaxis])
+        prop_calib_each_board_lltf = np.exp(-1.0j * 2 * np.pi * tracelengths[:,:,np.newaxis] / wavelengths_lltf[np.newaxis, np.newaxis])
+        prop_calib_each_board_ht40 = np.exp(-1.0j * 2 * np.pi * tracelengths[:,:,np.newaxis] / wavelengths_ht40[np.newaxis, np.newaxis])
         prop_delay_each_board = np.asarray(constants.CALIB_TRACE_LENGTH) / np.asarray(constants.CALIB_TRACE_GROUP_VELOCITY)
-
-        # TODO: Account for board-specific time offsets in timestamp_calibration_values
 
         # Account for additional board-specific phase offsets due to different feeder cable lengths in a multi-board antenna array system
         if board_cable_lengths is not None:
             assert(board_cable_vfs is not None)
             board_cable_lengths = np.asarray(board_cable_lengths)
             board_cable_vfs = np.asarray(board_cable_vfs)
-            subcarrier_cable_wavelengths = util.get_cable_wavelength(util.get_frequencies_ht40(channel_primary, channel_secondary), board_cable_vfs).astype(calibration_values_ht40.dtype)
-            board_phase_offsets = np.exp(-1.0j * 2 * np.pi * board_cable_lengths[:,np.newaxis] / subcarrier_cable_wavelengths)
-            prop_calib = np.einsum("bs,ras->bras", board_phase_offsets, prop_calib_each_board)
-            coeffs_without_propdelay = np.einsum("bras,bras->bras", calibration_values_ht40, np.conj(prop_calib))
-        else:
-            coeffs_without_propdelay = np.einsum("bras,ras->bras", calibration_values_ht40, np.conj(prop_calib_each_board))
 
-        self.calibration_values_ht40: np.ndarray = np.exp(-1.0j * np.angle(coeffs_without_propdelay))
-        self.calibration_values_ht40_flat: np.ndarray = np.sum(np.exp(-1.0j * np.angle(coeffs_without_propdelay)), axis = -1)
+            subcarrier_cable_wavelengths_lltf = util.get_cable_wavelength(util.get_frequencies_lltf(channel_primary), board_cable_vfs).astype(calibration_values_lltf.dtype)
+            subcarrier_cable_wavelengths_ht40 = util.get_cable_wavelength(util.get_frequencies_ht40(channel_primary, channel_secondary), board_cable_vfs).astype(calibration_values_ht40.dtype)
+
+            board_phase_offsets_lltf = np.exp(-1.0j * 2 * np.pi * board_cable_lengths[:,np.newaxis] / subcarrier_cable_wavelengths_lltf)
+            board_phase_offsets_ht40 = np.exp(-1.0j * 2 * np.pi * board_cable_lengths[:,np.newaxis] / subcarrier_cable_wavelengths_ht40)
+
+            prop_calib_lltf = np.einsum("bs,ras->bras", board_phase_offsets_lltf, prop_calib_each_board_lltf)
+            prop_calib_ht40 = np.einsum("bs,ras->bras", board_phase_offsets_ht40, prop_calib_each_board_ht40)
+
+            coeffs_without_propdelay_lltf = np.einsum("bras,bras->bras", calibration_values_lltf, np.conj(prop_calib_lltf))
+            coeffs_without_propdelay_ht40 = np.einsum("bras,bras->bras", calibration_values_ht40, np.conj(prop_calib_ht40))
+        else:
+            coeffs_without_propdelay_lltf = np.einsum("bras,ras->bras", calibration_values_lltf, np.conj(prop_calib_each_board_lltf))
+            coeffs_without_propdelay_ht40 = np.einsum("bras,ras->bras", calibration_values_ht40, np.conj(prop_calib_each_board_ht40))
+
+        self.calibration_values_lltf: np.ndarray = np.exp(-1.0j * np.angle(coeffs_without_propdelay_lltf))
+        self.calibration_values_ht40: np.ndarray = np.exp(-1.0j * np.angle(coeffs_without_propdelay_ht40))
+
         self.timestamp_calibration_values = timestamp_calibration_values - prop_delay_each_board[np.newaxis,:,:]
 
     def apply_ht40(self, values: np.ndarray, sensor_timestamps: np.ndarray) -> np.ndarray:
         """
         Apply phase calibration to the provided HT40 CSI data.
-        Also accounts for subcarrier-specific phase offsets, e.g., due to low-pass filter characteristic of baseband signal path inside the ESP32,
-        but can be less accurate if reference channel is not frequency-flat.
+        Also accounts for subcarrier-specific phase offsets, e.g., due to low-pass filter characteristic of baseband signal path inside the ESP32.
 
         :param values: The CSI data to which the phase calibration should be applied, as a complex-valued numpy array of shape :code:`(boardcount, constants.ROWS_PER_BOARD, constants.ANTENNAS_PER_ROW, (csi.csi_buf_t.htltf_lower.size + csi.HT40_GAP_SUBCARRIERS * 2 + csi.csi_buf_t.htltf_higher.size) // 2)`
         :param sensor_timestamps: The precise time when the CSI data was sampled, as a numpy array of shape :code:`(boardcount, constants.ROWS_PER_BOARD, constants.ANTENNAS_PER_ROW)`
@@ -344,16 +355,32 @@ class CSICalibration(object):
         mean_sto_correction = np.exp(-1.0j * 2 * np.pi * mean_sto * np.arange(-csi.shape[-1] // 2, csi.shape[-1] // 2)).astype(np.complex64)
         return csi * mean_sto_correction[np.newaxis, np.newaxis, np.newaxis, :]
 
-    def apply_ht40_flat(self, values: np.ndarray) -> np.ndarray:
+    def apply_lltf(self, values: np.ndarray, sensor_timestamps: np.ndarray) -> np.ndarray:
         """
-        Apply phase calibration to the provided HT40 CSI data.
-        Assume constant phase offset over all subcarriers, i.e., ignore effects like low-pass characteristic.
+        Apply phase calibration to the provided L-LTF CSI data.
+        Also accounts for subcarrier-specific phase offsets, e.g., due to low-pass filter characteristic of baseband signal path inside the ESP32.
 
         :param values: The CSI data to which the phase calibration should be applied, as a complex-valued numpy array of shape :code:`(boardcount, constants.ROWS_PER_BOARD, constants.ANTENNAS_PER_ROW, (csi.csi_buf_t.htltf_lower.size + csi.HT40_GAP_SUBCARRIERS * 2 + csi.csi_buf_t.htltf_higher.size) // 2)`
-        :return: The phase-calibrated CSI data
+        :param sensor_timestamps: The precise time when the CSI data was sampled, as a numpy array of shape :code:`(boardcount, constants.ROWS_PER_BOARD, constants.ANTENNAS_PER_ROW)`
+        :return: The phase-calibrated and time offset-calibrated CSI data
         """
-        # TODO: Check if primary and secondary channel match
-        return np.einsum("bras,bra->bras", values, self.calibration_values_ht40_flat)
+        # TODO: Check if calibration value channel matches OTA channel
+
+        delay = sensor_timestamps - self.timestamp_calibration_values
+        delay = delay - np.mean(delay)
+
+        # TODO: Does STO delay correction depend on center frequency?
+        # i.e., if secondary channel is active, center frequency might be at the edge of the band
+        subcarrier_range = np.arange(-values.shape[-1] // 2, values.shape[-1] // 2)[np.newaxis,np.newaxis,np.newaxis,:]
+        # 128 bit delay is overkill here, CSI is only 2x32 bit, product would be 2x128 bit
+        sto_delay_correction = np.exp(-1.0j * 2 * np.pi * delay[:,:,:,np.newaxis] * constants.WIFI_SUBCARRIER_SPACING * subcarrier_range).astype(np.complex64)
+
+        csi = np.einsum("bras,bras,bras->bras", values, sto_delay_correction, self.calibration_values_lltf)
+
+        # Mean delay should be zero
+        mean_sto = np.angle(np.sum(csi[...,1:] * np.conj(csi[...,:-1]))) / (2 * np.pi)
+        mean_sto_correction = np.exp(-1.0j * 2 * np.pi * mean_sto * np.arange(-csi.shape[-1] // 2, csi.shape[-1] // 2)).astype(np.complex64)
+        return csi * mean_sto_correction[np.newaxis, np.newaxis, np.newaxis, :]
 
     def apply_timestamps(self, timestamps: np.ndarray):
         """
@@ -496,11 +523,13 @@ class Pool(object):
 
         # Collect calibration packets and compute calibration phases
         if per_board:
-            phase_calibrations = []
+            phase_calibrations_lltf = []
+            phase_calibrations_ht40 = []
             timestamp_calibrations = []
 
             for board_num, board in enumerate(self.boards):
-                complete_clusters = []
+                complete_clusters_lltf = []
+                complete_clusters_ht40 = []
                 timestamp_offsets = []
 
                 any_csi_count = 0
@@ -517,19 +546,25 @@ class Pool(object):
                         any_csi_count = any_csi_count + 1
 
                     if np.all(completion):
-                        complete_clusters.append(cluster.deserialize_csi_ht40()[board_num])
+                        complete_clusters_lltf.append(cluster.deserialize_csi_lltf()[board_num])
+                        if cluster.is_ht40():
+                            complete_clusters_ht40.append(cluster.deserialize_csi_ht40()[board_num])
                         timestamp_offsets.append(cluster.get_sensor_timestamps()[board_num] - cluster.get_host_timestamp())
 
-                self.logger.info(f"Board {board.get_name()}: Collected {any_csi_count} calibration clusters, out of which {len(complete_clusters)} are complete")
-                if len(complete_clusters) == 0:
+                self.logger.info(f"Board {board.get_name()}: Collected {any_csi_count} calibration clusters, out of which {len(complete_clusters_lltf)} are complete ({len(complete_clusters_ht40)} are HT40)")
+                if len(complete_clusters_lltf) == 0:
                     raise Exception("ESPARGOS calibration failed, did not receive phase reference signal")
-                phase_calibrations.append(util.csi_interp_iterative(np.asarray(complete_clusters)))
+                if len(complete_clusters_ht40) == 0:
+                    raise Exception("ESPARGOS calibration failed, did not receive any HT40 reference signal, currently not supported. Make sure to use 40MHz wide reference signal for calibration.")
+                phase_calibrations_lltf.append(util.csi_interp_iterative(np.asarray(complete_clusters_lltf)))
+                phase_calibrations_ht40.append(util.csi_interp_iterative(np.asarray(complete_clusters_ht40)))
                 timestamp_calibrations.append(np.mean(np.asarray(timestamp_offsets), axis = 0))
 
-            self.stored_calibration = CSICalibration(channel_primary, channel_secondary, np.asarray(phase_calibrations), np.asarray(timestamp_calibrations))
+            self.stored_calibration = CSICalibration(channel_primary, channel_secondary, np.asarray(phase_calibrations_lltf), np.asarray(phase_calibrations_ht40), np.asarray(timestamp_calibrations))
 
         else:
-            complete_clusters = []
+            complete_clusters_lltf = []
+            complete_clusters_ht40 = []
             timestamp_offsets = []
 
             for cluster in self.cluster_cache_calib.values():
@@ -542,16 +577,21 @@ class Pool(object):
 
                 completion = cluster.get_completion()
                 if np.all(completion):
-                    complete_clusters.append(cluster.deserialize_csi_ht40())
+                    complete_clusters_lltf.append(cluster.deserialize_csi_lltf())
+                    if cluster.is_ht40():
+                        complete_clusters_ht40.append(cluster.deserialize_csi_ht40())
                     timestamp_offsets.append(cluster.get_sensor_timestamps() - cluster.get_host_timestamp())
 
-            self.logger.info(f"Pool: Collected {len(self.cluster_cache_calib)} calibration clusters, out of which {len(complete_clusters)} are complete")
-            if len(complete_clusters) == 0:
+            self.logger.info(f"Pool: Collected {len(self.cluster_cache_calib)} calibration clusters, out of which {len(complete_clusters_lltf)} are complete ({len(complete_clusters_ht40)} are HT40)")
+            if len(complete_clusters_lltf) == 0:
                 raise Exception("ESPARGOS calibration failed, did not receive phase reference signal")
-            phase_calibration = util.csi_interp_iterative(np.asarray(complete_clusters))
+            if len(complete_clusters_ht40) == 0:
+                raise Exception("ESPARGOS calibration failed, did not receive any HT40 reference signal, currently not supported. Make sure to use 40MHz wide reference signal for calibration.")
+            phase_calibrations_lltf = util.csi_interp_iterative(np.asarray(complete_clusters_lltf))
+            phase_calibration_ht40 = util.csi_interp_iterative(np.asarray(complete_clusters_ht40))
             time_calibration = np.mean(np.asarray(timestamp_offsets), axis = 0)
 
-            self.stored_calibration = CSICalibration(channel_primary, channel_secondary, phase_calibration, time_calibration, board_cable_lengths=cable_lengths, board_cable_vfs=cable_velocity_factors)
+            self.stored_calibration = CSICalibration(channel_primary, channel_secondary, phase_calibrations_lltf, phase_calibration_ht40, time_calibration, board_cable_lengths=cable_lengths, board_cable_vfs=cable_velocity_factors)
 
     def get_calibration(self):
         """

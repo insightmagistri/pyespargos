@@ -25,6 +25,7 @@ class EspargosDemoCombinedArrayCalibration(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-u", "--update-rate", type = float, default = 0.01, help = "Rate by which calibration values are updated in exponential decay filter")
 		parser.add_argument("-b", "--boardwise", default = False, help = "Do not calibrate per sensor, calibrate only per board", action = "store_true")
 		parser.add_argument("-o", "--outfile", type = str, default = "", help = "File to write additional calibration results to")
+		parser.add_argument("-l", "--lltf", default = False, help = "Use only CSI from L-LTF", action = "store_true")
 		self.args = parser.parse_args()
 
 		# Set up ESPARGOS pool and backlog
@@ -33,7 +34,10 @@ class EspargosDemoCombinedArrayCalibration(PyQt6.QtWidgets.QApplication):
 		self.pool.calibrate(duration = 3, per_board = False)
 		self.pool.add_csi_callback(self.onCSI)
 
-		self.subcarrier_count = (espargos.csi.csi_buf_t.htltf_lower.size + espargos.csi.HT40_GAP_SUBCARRIERS * 2 + espargos.csi.csi_buf_t.htltf_higher.size) // 2
+		if self.args.lltf:
+			self.subcarrier_count = espargos.csi.csi_buf_t.lltf.size // 2
+		else:
+			self.subcarrier_count = (espargos.csi.csi_buf_t.htltf_lower.size + espargos.csi.HT40_GAP_SUBCARRIERS * 2 + espargos.csi.csi_buf_t.htltf_higher.size) // 2
 		self.subcarrier_range = np.arange(-self.subcarrier_count // 2, self.subcarrier_count // 2)
 
 		self.poll_timer = PyQt6.QtCore.QTimer(self)
@@ -62,20 +66,27 @@ class EspargosDemoCombinedArrayCalibration(PyQt6.QtWidgets.QApplication):
 		self.pool.run()
 
 	def onCSI(self, clustered_csi):
-		# Store HT40 CSI if applicable
-		sensor_timestamps_raw = clustered_csi.get_sensor_timestamps()
-		if clustered_csi.is_ht40():
-			csi_ht40 = clustered_csi.deserialize_csi_ht40()
-			assert(self.pool.get_calibration() is not None)
-			csi_ht40 = self.pool.get_calibration().apply_ht40(csi_ht40, sensor_timestamps_raw)
-			espargos.util.interpolate_ht40_gap(csi_ht40)
+		if not self.args.lltf and not clustered_csi.is_ht40():
+			print("Expected HT40 frame, but got non-HT40 frame, ignoring!")
+			return
 
-			if self.calibration_values is None:
-				self.calibration_values = csi_ht40
-			else:
-				csi_to_interpolate = np.asarray([csi_ht40, self.calibration_values])
-				weights = np.asarray([self.args.update_rate, 1.0 - self.args.update_rate])
-				self.calibration_values = espargos.util.csi_interp_iterative(csi_to_interpolate, weights)
+		# Store CSI if applicable
+		sensor_timestamps_raw = clustered_csi.get_sensor_timestamps()
+		csi = clustered_csi.deserialize_csi_lltf() if self.args.lltf else clustered_csi.deserialize_csi_ht40()
+		assert(self.pool.get_calibration() is not None)
+		if self.args.lltf:
+			csi = self.pool.get_calibration().apply_lltf(csi, sensor_timestamps_raw)
+			espargos.util.interpolate_lltf_gap(csi)
+		else:
+			csi = self.pool.get_calibration().apply_ht40(csi, sensor_timestamps_raw)
+			espargos.util.interpolate_ht40_gap(csi)
+
+		if self.calibration_values is None:
+			self.calibration_values = csi
+		else:
+			csi_to_interpolate = np.asarray([csi, self.calibration_values])
+			weights = np.asarray([self.args.update_rate, 1.0 - self.args.update_rate])
+			self.calibration_values = espargos.util.csi_interp_iterative(csi_to_interpolate, weights)
 
 	@PyQt6.QtCore.pyqtSlot(list)
 	def updateCalibrationResult(self, phaseSeries):
