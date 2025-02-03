@@ -25,8 +25,8 @@ class EspargosDemoPhasesOverSpace(PyQt6.QtWidgets.QApplication):
 		parser = argparse.ArgumentParser(description = "ESPARGOS Demo: Show phases over space (single board)")
 		parser.add_argument("host", type = str, help = "Host address (IP or hostname) of ESPARGOS controller")
 		parser.add_argument("-b", "--backlog", type = int, default = 100, help = "Number of CSI datapoints to average over in backlog")
-		parser.add_argument("-s", "--shift-peak", default = False, help = "Time-shift CSI so that first peaks align", action = "store_true")
 		parser.add_argument("-n", "--no-calibration", default = False, help = "Disable phase calibration", action = "store_true")
+		parser.add_argument("-l", "--lltf", default = False, help = "Use only CSI from L-LTF", action = "store_true")
 		self.args = parser.parse_args()
 
 		# Set up ESPARGOS pool and backlog
@@ -34,7 +34,7 @@ class EspargosDemoPhasesOverSpace(PyQt6.QtWidgets.QApplication):
 		self.pool.start()
 		if not self.args.no_calibration:
 			self.pool.calibrate(duration = 4)
-		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog, calibrate = not self.args.no_calibration)
+		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog, calibrate = not self.args.no_calibration, enable_lltf = self.args.lltf, enable_ht40 = not self.args.lltf)
 		self.backlog.start()
 
 		# Qt setup
@@ -54,10 +54,9 @@ class EspargosDemoPhasesOverSpace(PyQt6.QtWidgets.QApplication):
 
 	@PyQt6.QtCore.pyqtSlot()
 	def updateRequest(self):
-		csi_backlog_ht40 = self.backlog.get_ht40()
-		csi_ht40_shifted = espargos.util.shift_to_firstpeak(csi_backlog_ht40) if self.args.shift_peak else csi_backlog_ht40
-		R = np.einsum("dbmis,dbnjs->minj", csi_ht40_shifted, np.conj(csi_ht40_shifted))
-		R = np.reshape(R, (8, 8)) # TODO
+		csi_backlog = self.backlog.get_lltf() if self.args.lltf else self.backlog.get_ht40()
+		R = np.einsum("dbmis,dbnjs->minj", csi_backlog, np.conj(csi_backlog))
+		R = np.reshape(R, (espargos.constants.ANTENNAS_PER_BOARD, espargos.constants.ANTENNAS_PER_BOARD))
 		w, v = np.linalg.eig(R)
 		csi_smoothed = v[:, np.argmax(w)]
 		offsets_current = csi_smoothed.flatten()

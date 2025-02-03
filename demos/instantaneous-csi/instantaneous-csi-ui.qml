@@ -47,7 +47,7 @@ ApplicationWindow {
 					titleText: (backend.timeDomain || backend.superResolution) ? "<font color=\"#e0e0e0\">Delay [tap]</font>" : "<font color=\"#e0e0e0\">Subcarrier Index</font>"
 					titleFont.bold: false
 					gridLineColor: "#c0c0c0"
-					tickInterval: (backend.timeDomain || backend.superResolution) ? 5 : 20
+					tickInterval: (backend.timeDomain || backend.superResolution) ? 1 : 20
 					tickType: ValueAxis.TicksDynamic
 					labelsColor: "#e0e0e0"
 				},

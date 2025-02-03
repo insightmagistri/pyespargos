@@ -32,6 +32,7 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 		algo_group.add_argument("-u", "--unwrap", default = False, help = "Use phase unwrapping algorithm to compute more precise ToAs of LoS paths", action = "store_true")
 		parser.add_argument("-a", "--average", default = False, help = "Average TDoAs over all antennas in array", action = "store_true")
 		parser.add_argument("-c", "--maxage", type = float, default = 10, help = "Maximum age of CSI datapoints before they are cleared")
+		parser.add_argument("-l", "--lltf", default = False, help = "Use only CSI from L-LTF", action = "store_true")
 		self.args = parser.parse_args()
 
 		# Set up ESPARGOS pool and backlog
@@ -39,7 +40,7 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 		self.pool = espargos.Pool([espargos.Board(host) for host in hosts])
 		self.pool.start()
 		self.pool.calibrate(duration = 4, per_board=False)
-		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog)
+		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog, enable_lltf = self.args.lltf, enable_ht40 = not self.args.lltf)
 		self.backlog.start()
 
 		# Qt setup
@@ -65,20 +66,24 @@ class EspargosDemoTDOAOverTime(PyQt6.QtWidgets.QApplication):
 			#timestamps = self.backlog.get_timestamps()
 			#tdoas_ns = np.mean(timestamps - np.mean(timestamps, axis = (1, 2, 3))[:,np.newaxis,np.newaxis,np.newaxis], axis = 0) * 1e9
 
-			csi_backlog_ht40 = self.backlog.get_ht40()
-			espargos.util.interpolate_ht40_gap(csi_backlog_ht40)
+			csi_backlog = self.backlog.get_lltf() if self.args.lltf else self.backlog.get_ht40()
+
+			if self.args.lltf:
+				espargos.util.interpolate_lltf_gap(csi_backlog)
+			else:
+				espargos.util.interpolate_ht40_gap(csi_backlog)
 
 			# Do interpolation "by_array" due to Doppler (destroys TDoA for moving targets otherwise)
-			csi_interp_ht40 = espargos.util.csi_interp_iterative_by_array(csi_backlog_ht40, iterations = 5)
+			csi_interp = espargos.util.csi_interp_iterative_by_array(csi_backlog, iterations = 5)
 
 			if self.args.music:
-				tdoas_ns = espargos.util.estimate_toas_rootmusic(csi_backlog_ht40, per_board_average = self.args.average) * 1e9
+				tdoas_ns = espargos.util.estimate_toas_rootmusic(csi_backlog, per_board_average = self.args.average) * 1e9
 			elif self.args.unwrap:
-				phases = np.unwrap(np.angle(csi_interp_ht40), axis = -1)
+				phases = np.unwrap(np.angle(csi_interp), axis = -1)
 				tdoas_ns = (phases[..., -1] - phases[..., 0]) / (2 * np.pi * phases.shape[-1]) / espargos.constants.WIFI_SUBCARRIER_SPACING * 1e9
 			else:
 				sum_axis = -1 if not self.args.average else (1, 2, 3)
-				tdoas_ns = np.angle(np.sum(csi_interp_ht40[...,1:] * np.conj(csi_interp_ht40[...,:-1]), axis = sum_axis)) / (2 * np.pi) / espargos.constants.WIFI_SUBCARRIER_SPACING * 1e9
+				tdoas_ns = np.angle(np.sum(csi_interp[...,1:] * np.conj(csi_interp[...,:-1]), axis = sum_axis)) / (2 * np.pi) / espargos.constants.WIFI_SUBCARRIER_SPACING * 1e9
 
 			mean_rx_timestamp = self.backlog.get_latest_timestamp() - self.startTimestamp
 

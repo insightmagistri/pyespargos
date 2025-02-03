@@ -24,14 +24,15 @@ class EspargosDemoMusicSpectrum(PyQt6.QtWidgets.QApplication):
 		parser = argparse.ArgumentParser(description = "ESPARGOS Demo: Show MUSIC angle of arrival spectrum (single board)")
 		parser.add_argument("host", type = str, help = "Host address (IP or hostname) of ESPARGOS controller")
 		parser.add_argument("-b", "--backlog", type = int, default = 20, help = "Number of CSI datapoints to average over in backlog")
-		parser.add_argument("-s", "--shift-peak", default = False, help = "Time-shift CSI so that first peaks align", action = "store_true")
+		parser.add_argument("-s", "--shift-peak", default = False, help = "Time-shift CSI to find LoS peak", action = "store_true")
+		parser.add_argument("-l", "--lltf", default = False, help = "Use only CSI from L-LTF", action = "store_true")
 		self.args = parser.parse_args()
 
 		# Set up ESPARGOS pool and backlog
 		self.pool = espargos.Pool([espargos.Board(self.args.host)])
 		self.pool.start()
 		self.pool.calibrate(duration = 2)
-		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog)
+		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog, enable_lltf=self.args.lltf, enable_ht40=not self.args.lltf)
 		self.backlog.start()
 
 		# Qt setup
@@ -56,21 +57,22 @@ class EspargosDemoMusicSpectrum(PyQt6.QtWidgets.QApplication):
 
 	@PyQt6.QtCore.pyqtSlot(PyQt6.QtCharts.QLineSeries, PyQt6.QtCharts.QValueAxis)
 	def updateSpatialSpectrum(self, series, axis):
-		csi_backlog_ht40 = self.backlog.get_ht40()
+		csi_backlog = self.backlog.get_lltf() if self.args.lltf else self.backlog.get_ht40()
 		rssi_backlog = self.backlog.get_rssi()
 
 		# Weight CSI data with RSSI
-		csi_backlog_ht40 = csi_backlog_ht40 * 10**(rssi_backlog[..., np.newaxis] / 20)
+		csi_backlog = csi_backlog * 10**(rssi_backlog[..., np.newaxis] / 20)
 
-		# Shift to first peak if requested (TODO: remove this, was only needed when we did not have time synchronization across sensors)
-		csi_ht40_shifted = espargos.util.shift_to_firstpeak(csi_backlog_ht40) if self.args.shift_peak else csi_backlog_ht40
+		# Shift to first peak if requested
+		csi_shifted = espargos.util.shift_to_firstpeak(csi_backlog, peak_threshold = 0.5) if self.args.shift_peak else csi_backlog
 
 		# Compute array covariance matrix R over all backlog datapoints, all rows and all subcarriers
 		# TODO: Instead of just using all subcarriers to estimate R, should we extract the LoS component?
-		#csi_backlog_ht40_tdomain = np.fft.fftshift(np.fft.fft(np.fft.fftshift(csi_backlog_ht40, axes = -1), axis = -1), axes = -1)
-		#print(np.mean(np.abs(csi_backlog_ht40_tdomain), axis = (0, 1, 2, 3)))
-		csi_ht40_shifted_los = np.sum(csi_ht40_shifted, axis = -1)
-		R = np.einsum("dbri,dbrj->ij", csi_ht40_shifted_los, np.conj(csi_ht40_shifted_los))
+		#csi_backlog_tdomain = np.fft.fftshift(np.fft.fft(np.fft.fftshift(csi_backlog, axes = -1), axis = -1), axes = -1)
+		#print(np.mean(np.abs(csi_backlog_tdomain), axis = (0, 1, 2, 3)))
+		csi_shifted_los = np.sum(csi_shifted, axis = -1)
+		R = np.einsum("dbri,dbrj->ij", csi_shifted_los, np.conj(csi_shifted_los))
+		#R = np.einsum("dbris,dbrjs->ij", csi_shifted, np.conj(csi_shifted))
 		eig_val, eig_vec = np.linalg.eig(R)
 		order = np.argsort(eig_val)[::-1]
 		Qn = eig_vec[:,order][:,1:]

@@ -27,6 +27,7 @@ class EspargosDemoPhasesOverTime(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-b", "--backlog", type = int, default = 20, help = "Number of CSI datapoints to average over in backlog")
 		parser.add_argument("-m", "--maxage", type = float, default = 10, help = "Maximum age of CSI datapoints before they are cleared")
 		parser.add_argument("-s", "--shift-peak", default = False, help = "Time-shift CSI so that first peaks align", action = "store_true")
+		parser.add_argument("-l", "--lltf", default = False, help = "Use only CSI from L-LTF", action = "store_true")
 		self.args = parser.parse_args()
 
 		# Set up ESPARGOS pool and backlog
@@ -34,7 +35,7 @@ class EspargosDemoPhasesOverTime(PyQt6.QtWidgets.QApplication):
 		self.pool = espargos.Pool([espargos.Board(host) for host in hosts])
 		self.pool.start()
 		self.pool.calibrate(per_board = False, duration = 2)
-		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog)
+		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog, enable_lltf = self.args.lltf, enable_ht40 = not self.args.lltf)
 		self.backlog.add_update_callback(self.update)
 		self.backlog.start()
 
@@ -57,10 +58,10 @@ class EspargosDemoPhasesOverTime(PyQt6.QtWidgets.QApplication):
 
 	def update(self):
 		if self.backlog.nonempty():
-			csi_backlog_ht40 = self.backlog.get_ht40()
-			csi_ht40_shifted = espargos.util.shift_to_firstpeak(csi_backlog_ht40) if self.args.shift_peak else csi_backlog_ht40
-			csi_interp_ht40 = espargos.util.csi_interp_iterative(csi_ht40_shifted)
-			csi_flat = np.reshape(csi_interp_ht40, (-1, csi_interp_ht40.shape[-1]))
+			csi_backlog = self.backlog.get_lltf() if self.args.lltf else self.backlog.get_ht40()
+			csi_shifted = espargos.util.shift_to_firstpeak_sync(csi_backlog) if self.args.shift_peak else csi_backlog
+			csi_interp = espargos.util.csi_interp_iterative(csi_shifted)
+			csi_flat = np.reshape(csi_interp, (-1, csi_interp.shape[-1]))
 
 			# TODO: Deal with non-synchronized multi-board setup
 			csi_by_antenna = espargos.util.csi_interp_iterative(np.transpose(csi_flat))

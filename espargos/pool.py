@@ -285,6 +285,7 @@ class CSICalibration(object):
 
         This class takes care of storing and applying the phase calibration values for the CSI data as well as calibrating phases.
         It also supports multi-board setups with different lengths for the cables that distribute the clock and phase calibration signal.
+        Note: Single-channel calibration is currently not yet supported, must always calibrate whole 40MHz channel.
 
         :param channel_primary: The primary channel number
         :param channel_secondary: The secondary channel number
@@ -293,16 +294,19 @@ class CSICalibration(object):
         :param board_cable_lengths: The lengths of the cables that distribute the clock and phase calibration signal to the ESP32 boards, in meters
         :param board_cable_vfs: The velocity factors of the cables that distribute the clock and phase calibration signal to the ESP32 boards
         """
+        assert(np.abs(channel_primary - channel_secondary) == 4)
+
         self.channel_primary = channel_primary
         self.channel_secondary = channel_secondary
-        self.frequencies_lltf = util.get_frequencies_lltf(channel_primary)
-        self.frequencies_ht40 = util.get_frequencies_ht40(channel_primary, channel_secondary)
+        self.frequencies_lltf = util.get_frequencies_lltf(self.channel_primary)
+        self.frequencies_ht40 = util.get_frequencies_ht40(self.channel_primary, self.channel_secondary)
         wavelengths_lltf = util.get_calib_trace_wavelength(self.frequencies_lltf).astype(calibration_values_lltf.dtype)
         wavelengths_ht40 = util.get_calib_trace_wavelength(self.frequencies_ht40).astype(calibration_values_ht40.dtype)
         tracelengths = np.asarray(constants.CALIB_TRACE_LENGTH, dtype = calibration_values_ht40.dtype)# - np.asarray(constants.CALIB_TRACE_EMPIRICAL_ERROR)
         prop_calib_each_board_lltf = np.exp(-1.0j * 2 * np.pi * tracelengths[:,:,np.newaxis] / wavelengths_lltf[np.newaxis, np.newaxis])
         prop_calib_each_board_ht40 = np.exp(-1.0j * 2 * np.pi * tracelengths[:,:,np.newaxis] / wavelengths_ht40[np.newaxis, np.newaxis])
         prop_delay_each_board = np.asarray(constants.CALIB_TRACE_LENGTH) / np.asarray(constants.CALIB_TRACE_GROUP_VELOCITY)
+        self.receiver_lo_freq = constants.WIFI_CHANNEL1_FREQUENCY + constants.WIFI_CHANNEL_SPACING * ((channel_primary + channel_secondary) / 2 - 1)
 
         # Account for additional board-specific phase offsets due to different feeder cable lengths in a multi-board antenna array system
         if board_cable_lengths is not None:
@@ -347,7 +351,6 @@ class CSICalibration(object):
         subcarrier_range = np.arange(-values.shape[-1] // 2, values.shape[-1] // 2)[np.newaxis,np.newaxis,np.newaxis,:]
         # 128 bit delay is overkill here, CSI is only 2x32 bit, product would be 2x128 bit
         sto_delay_correction = np.exp(-1.0j * 2 * np.pi * delay[:,:,:,np.newaxis] * constants.WIFI_SUBCARRIER_SPACING * subcarrier_range).astype(np.complex64)
-
         csi = np.einsum("bras,bras,bras->bras", values, sto_delay_correction, self.calibration_values_ht40)
 
         # Mean delay should be zero
@@ -369,11 +372,12 @@ class CSICalibration(object):
         delay = sensor_timestamps - self.timestamp_calibration_values
         delay = delay - np.mean(delay)
 
-        # TODO: Does STO delay correction depend on center frequency?
-        # i.e., if secondary channel is active, center frequency might be at the edge of the band
-        subcarrier_range = np.arange(-values.shape[-1] // 2, values.shape[-1] // 2)[np.newaxis,np.newaxis,np.newaxis,:]
+        # Apply phase correction due to CFO. Depends on whether receiver LO is above / below primary channel (assumes HT40 calibration)
+        # TODO: Check if this STO compensation really matches what happens in hardware
+        subcarrier_frequency_offsets = util.get_frequencies_lltf(self.channel_primary) - self.receiver_lo_freq
+
         # 128 bit delay is overkill here, CSI is only 2x32 bit, product would be 2x128 bit
-        sto_delay_correction = np.exp(-1.0j * 2 * np.pi * delay[:,:,:,np.newaxis] * constants.WIFI_SUBCARRIER_SPACING * subcarrier_range).astype(np.complex64)
+        sto_delay_correction = np.exp(-1.0j * 2 * np.pi * delay[:,:,:,np.newaxis] * subcarrier_frequency_offsets).astype(np.complex64)
 
         csi = np.einsum("bras,bras,bras->bras", values, sto_delay_correction, self.calibration_values_lltf)
 

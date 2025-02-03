@@ -14,6 +14,8 @@ import PyQt6.QtCharts
 import PyQt6.QtCore
 import PyQt6.QtQml
 
+import matplotlib.pyplot as plt
+
 class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 	def __init__(self, argv):
 		super().__init__(argv)
@@ -91,7 +93,7 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		else:
 			espargos.util.interpolate_lltf_gap(csi_backlog)
 
-		csi_shifted = espargos.util.shift_to_firstpeak_sync(csi_backlog) if self.args.shift_peak else csi_backlog
+		csi_shifted = espargos.util.shift_to_firstpeak_sync(csi_backlog, peak_threshold = 0.9) if self.args.shift_peak else csi_backlog
 
 		# TODO: If using per-board calibration, interpolation should also be per-board
 		csi_interp = espargos.util.csi_interp_iterative(csi_shifted, iterations = 5)
@@ -112,17 +114,19 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 			for pwr_series, mvdr_pdp in zip(powerSeries, superres_pdps_flat):
 				pwr_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(superres_delays, mvdr_pdp)])
 		elif self.args.timedomain:
-			zero_padding = np.zeros((csi_flat.shape[0], csi_flat.shape[1] * (self.args.oversampling - 1)), dtype = np.complex64)
-			csi_flat = np.concatenate((csi_flat, zero_padding), axis = 1)
-			csi_flat = np.fft.fftshift(np.fft.ifft(np.fft.ifftshift(csi_flat, axes = -1), axis = -1), axes = -1)
-			subcarrier_range_zeropadded = np.arange(-csi_flat.shape[-1] // 2, csi_flat.shape[-1] // 2) / self.args.oversampling
-			csi_power = (csi_flat.shape[1] * np.abs(csi_flat))**2
+			csi_flat_zeropadded = np.zeros((csi_flat.shape[0], csi_flat.shape[1] * self.args.oversampling), dtype = np.complex64)
+			subcarriers = csi_flat.shape[1]
+			subcarriers_zp = csi_flat_zeropadded.shape[1]
+			csi_flat_zeropadded[:,subcarriers_zp // 2 - subcarriers // 2:subcarriers_zp // 2 + subcarriers // 2 + 1] = csi_flat
+			csi_flat_zeropadded = np.fft.ifftshift(np.fft.ifft(np.fft.fftshift(csi_flat_zeropadded, axes = -1), axis = -1), axes = -1)
+			subcarrier_range_zeropadded = np.arange(-csi_flat_zeropadded.shape[-1] // 2, csi_flat_zeropadded.shape[-1] // 2) / self.args.oversampling
+			csi_power = (csi_flat_zeropadded.shape[1] * np.abs(csi_flat_zeropadded))**2
 			self.stable_power_minimum = 0
 			self.stable_power_maximum = self._interpolate_axis_range(self.stable_power_maximum, np.max(csi_power) * 1.1)
 
 			axis.setMin(0)
-			axis.setMax(csi_flat.shape[-1] / np.sqrt(2) / self.args.oversampling**2)
-			csi_phase = np.angle(csi_flat * np.exp(-1.0j * np.angle(csi_flat[0, len(csi_flat[0]) // 2])))
+			axis.setMax(csi_flat_zeropadded.shape[-1] / np.sqrt(2) / self.args.oversampling**2)
+			csi_phase = np.angle(csi_flat_zeropadded * np.exp(-1.0j * np.angle(csi_flat_zeropadded[0, len(csi_flat_zeropadded[0]) // 2])))
 
 			for pwr_series, phase_series, ant_pwr, ant_phase in zip(powerSeries, phaseSeries, csi_power, csi_phase):
 				pwr_series.replace([PyQt6.QtCore.QPointF(s, p) for s, p in zip(subcarrier_range_zeropadded, ant_pwr)])
