@@ -14,8 +14,6 @@ import PyQt6.QtCharts
 import PyQt6.QtCore
 import PyQt6.QtQml
 
-import matplotlib.pyplot as plt
-
 class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 	def __init__(self, argv):
 		super().__init__(argv)

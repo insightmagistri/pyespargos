@@ -6,10 +6,8 @@ import sys
 sys.path.append(str(pathlib.Path(__file__).absolute().parents[2]))
 
 import numpy as np
-import matplotlib
 import espargos
 import argparse
-import time
 
 import PyQt6.QtWidgets
 import PyQt6.QtCharts
