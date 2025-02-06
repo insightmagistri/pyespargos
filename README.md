@@ -53,11 +53,11 @@ pip install .
 ```
 * To install `pyespargos` system-wide (as opposed to inside a virtual environment), you may need to use
 ```bash
-sudo pip install . --break-system-packages
+sudo pip install --break-system-packages .
 ```
 * If you want to make changes the `pyespargos`, it is recommended to install it in editable mode. This way, if you make changes to the `espargos` library, they immediately apply system-wide:
 ```bash
-sudo pip install . -e --break-system-packages
+sudo pip install -e --break-system-packages .
 ```
 * Import the `espargos` package in your Python application. Use this minimal sample code to get started:
 ```python
