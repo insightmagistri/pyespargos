@@ -14,7 +14,7 @@ ApplicationWindow {
 	color: "#333333"
 	title: "ESPARGOS Camera Overlay Demo"
 
-    // Full screen management
+	// Full screen management
 	visibility: ApplicationWindow.Windowed
 	Shortcut {
 		sequence: "F11"
@@ -37,6 +37,46 @@ ApplicationWindow {
 
 	CameraOverlay {
 		anchors.fill: parent
+
+		Rectangle {
+			height: parent.height * 0.8
+			visible: backend.manualExposure
+			width: 40
+			color: "#20ffffff"
+			anchors.right: parent.right
+			anchors.rightMargin: 20
+			anchors.verticalCenter: parent.verticalCenter
+			radius: 10
+
+			Slider {
+				id: exposureSlider
+				anchors.fill: parent
+				anchors.topMargin: 20
+				anchors.bottomMargin: 20
+				orientation: Qt.Vertical
+				from: 0
+				to: 1
+				value: 0.5
+
+				handle: Rectangle {
+					x: exposureSlider.leftPadding + exposureSlider.availableWidth / 2 - width / 2
+					y: exposureSlider.topPadding +  exposureSlider.visualPosition * (exposureSlider.availableHeight - height)
+					implicitWidth: 26
+					implicitHeight: 26
+					radius: 12
+					color: exposureSlider.pressed ? "#f0f0f0" : "#f6f6f6"
+					border.color: "#bdbebf"
+				}
+
+				onMoved : {
+					backend.adjustExposure(value);
+				}
+
+				Component.onCompleted : {
+					backend.adjustExposure(value);
+				}
+			}
+		}
 	}
 
 	footer: Pane {

@@ -30,6 +30,7 @@ layout(std140, binding = 0) uniform buf {
 
 	bool musicMode;
 	bool fftMode;
+	bool rawBeamspace;
 	vec2 fov;
 };
 
@@ -103,7 +104,7 @@ void main() {
 		vColor = vec4(0.2 * intensity, intensity, 0.2 * intensity, 0.0);
 	} else {
 		vec2 angles = toAngles(qt_MultiTexCoord0);
-		vec2 textureCoords = fftMode ? (toFFTBeamspace(angles) + 0.5) : ((degrees(angles) + 90) / 180);
+		vec2 textureCoords = rawBeamspace ? qt_MultiTexCoord0 : (fftMode ? (toFFTBeamspace(angles) + 0.5) : ((degrees(angles) + 90) / 180));
 
 		vec4 spatialSpectrumPixel = texture(spatialSpectrumCanvasSource, textureCoords);
 		vColor = spatialSpectrumPixel;

@@ -78,12 +78,13 @@ Rectangle {
 
 		property bool musicMode: backend.music
 		property bool fftMode: backend.isFFTBeamspace
+		property bool rawBeamspace: backend.rawBeamspace
 		property vector2d fov: Qt.vector2d(backend.fovAzimuth, backend.fovElevation)
 
 		fragmentShader: "spatialspectrum.qsb"
 
 		// This is the source for the webcam image
-		property variant source: ShaderEffectSource {
+		property variant cameraImage: ShaderEffectSource {
 			sourceItem: videoOutput;
 			sourceRect: videoOutput.contentRect;
 			hideSource: true

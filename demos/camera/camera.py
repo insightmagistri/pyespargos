@@ -53,7 +53,9 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-md", "--max-delay", type = float, default = 0.2, help = "Maximum delay in samples for colorizing delay")
 		parser.add_argument("-a", "--additional-calibration", type = str, default = "", help = "File to read additional phase calibration results from")
 		parser.add_argument("-l", "--lltf", default = False, help = "Use only CSI from L-LTF", action = "store_true")
+		parser.add_argument("-e", "--manual-exposure", default = False, help = "Use manual exposure / brightness control for WiFi overlay", action = "store_true")
 		parser.add_argument("--mac-filter", type = str, default = "", help = "Only display CSI data from given MAC address")
+		parser.add_argument("--raw", default = False, help = "Display raw beamspace data instead of camera overlay", action = "store_true")
 		display_group = parser.add_mutually_exclusive_group()
 		display_group.add_argument("-f", "--no-beamspace-fft", default = False, help = "Do NOT approximate beamspace transform via FFT (usually slower)", action = "store_true")
 		display_group.add_argument("-m", "--music", default = False, help = "Display spatial spectrum computed via MUSIC algorithm", action = "store_true")
@@ -102,6 +104,9 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		phase_r = antenna_index_r[:,np.newaxis] * self.k_r[np.newaxis,:]
 
 		self.steering_vectors_2d = np.exp(1.0j * (phase_c[np.newaxis,:,:,:] + phase_r[:,np.newaxis,np.newaxis,:]))
+
+		# Manual exposure control (only used if manual exposure is enabled)
+		self.exposure = 0
 
 	def exec(self):
 		context = self.engine.rootContext()
@@ -183,15 +188,18 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 				# (cannot separate 2D steering vector into Kronecker product of azimuth / elevation steering vectors)
 				beam_frequency_space = np.einsum("rcae,dbrcs->daes", self.steering_vectors_2d, csi_combined, optimize = True)
 
-			squared_power_by_beam = np.sum(np.abs(beam_frequency_space)**2, axis=(0, 3))**2
-			color_value = (squared_power_by_beam - np.min(squared_power_by_beam)) / (np.max(squared_power_by_beam) - np.min(squared_power_by_beam) + 1e-6)
+			cubed_power_by_beam = np.sum(np.abs(beam_frequency_space)**2, axis=(0, 3))**3
+			if self.args.manual_exposure:
+				color_value = cubed_power_by_beam / (10 ** ((1 - self.exposure) / 0.1) + 1e-8)
+			else:
+				color_value = cubed_power_by_beam / (np.max(cubed_power_by_beam) + 1e-6)
 
 			if self.args.colorize_delay:
 				# Compute beam powers and delay. Beam power is value, delay is hue.
 				mean_delay_by_beam = np.angle(np.sum(beam_frequency_space[...,1:] * np.conj(beam_frequency_space[...,:-1]), axis=(0, 3)))
 
 				hsv = np.zeros((beam_frequency_space.shape[1], beam_frequency_space.shape[2], 3))
-				hsv[:,:,0] = np.clip((mean_delay_by_beam - (-0.1)) / self.args.max_delay, 0, 1)
+				hsv[:,:,0] = np.clip((mean_delay_by_beam - (-self.args.max_delay / 2)) / self.args.max_delay, 0, 1)
 				hsv[:,:,1] = 0.8
 				hsv[:,:,2] = color_value
 
@@ -249,7 +257,6 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	def music(self):
 		return self.args.music
 
-
 	@PyQt6.QtCore.pyqtProperty(int, constant=True)
 	def resolutionAzimuth(self):
 		return self.args.resolution_azimuth
@@ -269,6 +276,19 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	@PyQt6.QtCore.pyqtProperty(bool, constant=True)
 	def isFFTBeamspace(self):
 		return not self.args.no_beamspace_fft
+
+	@PyQt6.QtCore.pyqtProperty(bool, constant=True)
+	def manualExposure(self):
+		return self.args.manual_exposure
+
+	@PyQt6.QtCore.pyqtSlot(float)
+	def adjustExposure(self, exposure):
+		self.exposure = exposure
+
+	@PyQt6.QtCore.pyqtProperty(bool, constant=True)
+	def rawBeamspace(self):
+		return self.args.raw
+
 
 app = EspargosDemoCamera(sys.argv)
 sys.exit(app.exec())
