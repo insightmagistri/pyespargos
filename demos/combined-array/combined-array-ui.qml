@@ -9,7 +9,21 @@ ApplicationWindow {
 	minimumWidth: 800
 	minimumHeight: 500
 
-	color: "#333333"
+    // Full screen management
+	visibility: ApplicationWindow.Windowed
+	Shortcut {
+		sequence: "F11"
+		onActivated: {
+			window.visibility = window.visibility == ApplicationWindow.Windowed ? ApplicationWindow.FullScreen : ApplicationWindow.Windowed
+		}
+	}
+
+	Shortcut {
+		sequence: "Esc"
+		onActivated: window.close()
+	}
+
+	color: "#11191e"
 	title: "Combined Array Demo"
 
 	Item {

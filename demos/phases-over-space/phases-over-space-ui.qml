@@ -9,7 +9,7 @@ ApplicationWindow {
 	minimumWidth: 800
 	minimumHeight: 500
 
-	color: "#333333"
+	color: "#11191e"
 	title: "Spatial Phase Distribution Demo"
 
 	Item {

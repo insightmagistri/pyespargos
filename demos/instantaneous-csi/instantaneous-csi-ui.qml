@@ -9,8 +9,22 @@ ApplicationWindow {
 	minimumWidth: 800
 	minimumHeight: 500
 
-	color: "#333333"
+	color: "#11191e"
 	title: "Instantaneous CSI"
+
+    // Full screen management
+	visibility: ApplicationWindow.Windowed
+	Shortcut {
+		sequence: "F11"
+		onActivated: {
+			window.visibility = window.visibility == ApplicationWindow.Windowed ? ApplicationWindow.FullScreen : ApplicationWindow.Windowed
+		}
+	}
+
+	Shortcut {
+		sequence: "Esc"
+		onActivated: window.close()
+	}
 
 	// Tab20 color cycle reordered: https://github.com/matplotlib/matplotlib/blob/main/lib/matplotlib/_cm.py#L1293
 	property var colorCycle: ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf", "#aec7e8", "#ffbb78", "#98df8a", "#ff9896", "#c5b0d5", "#c49c94", "#f7b6d2", "#c7c7c7", "#dbdb8d", "#9edae5"]
@@ -24,7 +38,7 @@ ApplicationWindow {
 			font.pixelSize: Math.max(24, window.width / 70)
 			text: "Instantaneous CSI: " + (backend.timeDomain ? "Time Domain" : (backend.superResolution ? "Superresolution Time Domain" : "Frequency Domain"))
 			color: "#ffffff"
-			Layout.margins: 10
+			Layout.margins: 6
 		}
 
 		ChartView {
@@ -35,8 +49,7 @@ ApplicationWindow {
 			Layout.fillWidth: true
 			Layout.fillHeight: true
 			antialiasing: true
-			backgroundColor: "#202020"
-			dropShadowEnabled: true
+			backgroundColor: "#151f26"
 
 			axes: [
 				ValueAxis {
@@ -50,6 +63,7 @@ ApplicationWindow {
 					tickInterval: (backend.timeDomain || backend.superResolution) ? 1 : 20
 					tickType: ValueAxis.TicksDynamic
 					labelsColor: "#e0e0e0"
+					labelFormat: "%d"
 				},
 				ValueAxis {
 					id: csiAmplitudeAxis
@@ -87,8 +101,7 @@ ApplicationWindow {
 			Layout.fillWidth: true
 			Layout.fillHeight: true
 			antialiasing: true
-			backgroundColor: "#202020"
-			dropShadowEnabled: true
+			backgroundColor: "#151f26"
 			visible: !backend.superResolution
 
 			axes: [
@@ -103,6 +116,7 @@ ApplicationWindow {
 					tickInterval: (backend.timeDomain || backend.superResolution) ? 5 : 20
 					tickType: ValueAxis.TicksDynamic
 					labelsColor: "#e0e0e0"
+					labelFormat: "%d"
 				},
 				ValueAxis {
 					id: csiPhaseAxis

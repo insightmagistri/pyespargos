@@ -9,7 +9,7 @@ ApplicationWindow {
 	minimumWidth: 800
 	minimumHeight: 500
 
-	color: "#333333"
+	color: "#11191e"
 	title: "Received Phases over Time"
 
 	// Tab20 color cycle reordered: https://github.com/matplotlib/matplotlib/blob/main/lib/matplotlib/_cm.py#L1293
@@ -19,7 +19,7 @@ ApplicationWindow {
 	Rectangle {
 		anchors.fill: parent
 		anchors.margins: 10
-		color: "#202020"
+		color: "#151f26"
 		opacity: 1
 
 		ColumnLayout {
@@ -47,7 +47,7 @@ ApplicationWindow {
 				Layout.margins: 10
 
 				antialiasing: true
-				backgroundColor: "#202020"
+				backgroundColor: "#11191e"
 
 				property var newDataBacklog: Array()
 

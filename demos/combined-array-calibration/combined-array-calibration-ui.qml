@@ -9,7 +9,7 @@ ApplicationWindow {
 	minimumWidth: 800
 	minimumHeight: 500
 
-	color: "#333333"
+	color: "#11191e"
 	title: "Combined Array Calibration Demo"
 
     // Full screen management
@@ -49,8 +49,7 @@ ApplicationWindow {
 			Layout.fillWidth: true
 			Layout.fillHeight: true
 			antialiasing: true
-			backgroundColor: "#202020"
-			dropShadowEnabled: true
+			backgroundColor: "#151f26"
 
 			axes: [
 				ValueAxis {

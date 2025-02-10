@@ -9,7 +9,21 @@ ApplicationWindow {
 	minimumWidth: 800
 	minimumHeight: 500
 
-	color: "#333333"
+    // Full screen management
+	visibility: ApplicationWindow.Windowed
+	Shortcut {
+		sequence: "F11"
+		onActivated: {
+			window.visibility = window.visibility == ApplicationWindow.Windowed ? ApplicationWindow.FullScreen : ApplicationWindow.Windowed
+		}
+	}
+
+	Shortcut {
+		sequence: "Esc"
+		onActivated: window.close()
+	}
+
+	color: "#11191e"
 	title: "MUSIC Azimuth of Arrival Spectrum"
 
 	ColumnLayout {
@@ -32,8 +46,7 @@ ApplicationWindow {
 			Layout.fillWidth: true
 			Layout.fillHeight: true
 			antialiasing: true
-			backgroundColor: "#202020"
-			dropShadowEnabled: true
+			backgroundColor: "#151f26"
 
 			axes: [
 				ValueAxis {
