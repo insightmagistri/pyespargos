@@ -167,15 +167,21 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		else:
 			# Option 2: Beamspace via FFT
 			if not self.args.no_beamspace_fft:
+				# Exploit time-domain sparsity to reduce number of 2D FFTs from antenna space to beamspace
+				csi_tdomain = np.fft.ifftshift(np.fft.ifft(np.fft.fftshift(csi_combined, axes = -1), axis = -1), axes = -1)
+				tap_count = csi_tdomain.shape[-1]
+				csi_tdomain_cut = csi_tdomain[...,tap_count//2 + 2 - 16:tap_count//2 + 2 + 16]
+				csi_fdomain_cut = np.fft.fftshift(np.fft.fft(np.fft.ifftshift(csi_tdomain_cut, axes = -1), axis = -1), axes = -1)
+
 				# This is technically not the correct way to go from antenna domain to azimuth / elevation space,
 				# but the shader can take care of fixing the distortion.
-				# csi_zeropadded has shape (datapoints, azimuth / row, elevation / column, subcarriers)
-				csi_zeropadded = np.zeros((csi_combined.shape[0], self.args.resolution_azimuth, self.args.resolution_elevation, csi_combined.shape[-1]), dtype = csi_combined.dtype)
-				real_rows_half = csi_combined.shape[2] // 2
-				real_cols_half = csi_combined.shape[3] // 2
+				# csi_zeropadded has shape (datapoints, azimuth / row, elevation / column, subcarriers)				
+				csi_zeropadded = np.zeros((csi_fdomain_cut.shape[0], self.args.resolution_azimuth, self.args.resolution_elevation, csi_fdomain_cut.shape[-1]), dtype = csi_fdomain_cut.dtype)
+				real_rows_half = csi_fdomain_cut.shape[2] // 2
+				real_cols_half = csi_fdomain_cut.shape[3] // 2
 				zeropadded_rows_half = csi_zeropadded.shape[2] // 2
 				zeropadded_cols_half = csi_zeropadded.shape[1] // 2
-				csi_zeropadded[:,zeropadded_cols_half-real_cols_half:zeropadded_cols_half+real_cols_half,zeropadded_rows_half-real_rows_half:zeropadded_rows_half+real_rows_half,:] = np.swapaxes(csi_combined[:,0,:,:,:], 1, 2)
+				csi_zeropadded[:,zeropadded_cols_half-real_cols_half:zeropadded_cols_half+real_cols_half,zeropadded_rows_half-real_rows_half:zeropadded_rows_half+real_rows_half,:] = np.swapaxes(csi_fdomain_cut[:,0,:,:,:], 1, 2)
 				csi_zeropadded = np.fft.ifftshift(csi_zeropadded, axes = (1, 2))
 				beam_frequency_space = np.fft.fft2(csi_zeropadded, axes = (1, 2))
 				beam_frequency_space = np.fft.fftshift(beam_frequency_space, axes = (1, 2))
