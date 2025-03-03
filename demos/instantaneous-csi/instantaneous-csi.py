@@ -25,6 +25,7 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-s", "--shift-peak", default = False, help = "Time-shift CSI so that first peaks align", action = "store_true")
 		parser.add_argument("-o", "--oversampling", type = int, default = 4, help = "Oversampling factor for time-domain CSI")
 		parser.add_argument("-l", "--lltf", default = False, help = "Use only CSI from L-LTF", action = "store_true")
+		parser.add_argument("-c", "--no-calib", default = False, help = "Do not calibrate", action = "store_true")
 		display_group = parser.add_mutually_exclusive_group()
 		display_group.add_argument("-t", "--timedomain", default = False, help = "Display CSI in time-domain", action = "store_true")
 		display_group.add_argument("-m", "--music", default = False, help = "Display PDP computed via MUSIC algorithm", action = "store_true")
@@ -35,8 +36,9 @@ class EspargosDemoInstantaneousCSI(PyQt6.QtWidgets.QApplication):
 		hosts = self.args.hosts.split(",")
 		self.pool = espargos.Pool([espargos.Board(host) for host in hosts])
 		self.pool.start()
-		self.pool.calibrate(duration = 2, per_board=False)
-		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog, enable_lltf = self.args.lltf, enable_ht40 = not self.args.lltf)
+		if not self.args.no_calib:
+			self.pool.calibrate(duration = 2, per_board=False)
+		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog, enable_lltf = self.args.lltf, enable_ht40 = not self.args.lltf, calibrate = not self.args.no_calib)
 		self.backlog.start()
 
 		# Value range handling
