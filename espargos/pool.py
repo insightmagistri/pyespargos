@@ -112,9 +112,9 @@ class ClusteredCSI(object):
         # This is likely due to the pi / 2 phase shift specified for the pilot symbols,
         # see IEEE 80211-2012 section 20.3.9.3.4 L-LTF definition
         if loc == 1:
-            csi_higher = csi_higher * np.exp(-1.0j * np.pi / 2)
+            csi_higher[:] = csi_higher * np.exp(-1.0j * np.pi / 2)
         else:
-            csi_lower = csi_lower * np.exp(-1.0j * np.pi / 2)
+            csi_lower[:] = csi_lower * np.exp(-1.0j * np.pi / 2)
 
         return csi_ht40
 
