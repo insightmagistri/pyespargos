@@ -55,7 +55,8 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-l", "--lltf", default = False, help = "Use only CSI from L-LTF", action = "store_true")
 		parser.add_argument("-e", "--manual-exposure", default = False, help = "Use manual exposure / brightness control for WiFi overlay", action = "store_true")
 		parser.add_argument("--mac-filter", type = str, default = "", help = "Only display CSI data from given MAC address")
-		parser.add_argument("--raw", default = False, help = "Display raw beamspace data instead of camera overlay", action = "store_true")
+		parser.add_argument("--raw-beamspace", default = False, help = "Display raw beamspace data instead of camera overlay", action = "store_true")
+		parser.add_argument("--raw-power", default = False, help = "Display raw beamspace power data instead of processed version", action = "store_true")
 		display_group = parser.add_mutually_exclusive_group()
 		display_group.add_argument("-f", "--no-beamspace-fft", default = False, help = "Do NOT approximate beamspace transform via FFT (usually slower)", action = "store_true")
 		display_group.add_argument("-m", "--music", default = False, help = "Display spatial spectrum computed via MUSIC algorithm", action = "store_true")
@@ -194,30 +195,41 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 				# (cannot separate 2D steering vector into Kronecker product of azimuth / elevation steering vectors)
 				beam_frequency_space = np.einsum("rcae,dbrcs->daes", self.steering_vectors_2d, csi_combined, optimize = True)
 
-			cubed_power_by_beam = np.sum(np.abs(beam_frequency_space)**2, axis=(0, 3))**3
-			if self.args.manual_exposure:
-				color_value = cubed_power_by_beam / (10 ** ((1 - self.exposure) / 0.1) + 1e-8)
+			if self.args.raw_power:
+				db_beamspace = 10 * np.log10(np.sum(np.abs(beam_frequency_space)**2, axis=(0, 3)))
+				db_beamspace_norm = (db_beamspace - np.max(db_beamspace) + 15) / 15
+				db_beamspace_norm = np.clip(db_beamspace_norm, 0, 1)
+				color_beamspace = self._viridis(db_beamspace_norm)
+			
+				alpha_channel = np.ones((*color_beamspace.shape[:2], 1))
+				color_beamspace_rgba = np.clip(np.concatenate((color_beamspace, alpha_channel), axis=-1), 0, 1)
+				self.beamspace_power_imagedata = np.asarray(np.swapaxes(color_beamspace_rgba, 0, 1).ravel() * 255, dtype = np.uint8)
 			else:
-				color_value = cubed_power_by_beam / (np.max(cubed_power_by_beam) + 1e-6)
+				power_visualization_beamspace = np.sum(np.abs(beam_frequency_space)**2, axis=(0, 3))**3
 
-			if self.args.colorize_delay:
-				# Compute beam powers and delay. Beam power is value, delay is hue.
-				mean_delay_by_beam = np.angle(np.sum(beam_frequency_space[...,1:] * np.conj(beam_frequency_space[...,:-1]), axis=(0, 3)))
+				if self.args.manual_exposure:
+					color_value = power_visualization_beamspace / (10 ** ((1 - self.exposure) / 0.1) + 1e-8)
+				else:
+					color_value = power_visualization_beamspace / (np.max(power_visualization_beamspace) + 1e-6)
 
-				hsv = np.zeros((beam_frequency_space.shape[1], beam_frequency_space.shape[2], 3))
-				hsv[:,:,0] = np.clip((mean_delay_by_beam - (-self.args.max_delay / 2)) / self.args.max_delay, 0, 1)
-				hsv[:,:,1] = 0.8
-				hsv[:,:,2] = color_value
+				if self.args.colorize_delay:
+					# Compute beam powers and delay. Beam power is value, delay is hue.
+					mean_delay_by_beam = np.angle(np.sum(beam_frequency_space[...,1:] * np.conj(beam_frequency_space[...,:-1]), axis=(0, 3)))
 
-				wifi_image_rgb = matplotlib.colors.hsv_to_rgb(hsv)
-				alpha_channel = np.ones((*wifi_image_rgb.shape[:2], 1))
-				wifi_image_rgba = np.clip(np.concatenate((wifi_image_rgb, alpha_channel), axis=-1), 0, 1)
-				self.beamspace_power_imagedata = np.asarray(np.swapaxes(wifi_image_rgba, 0, 1).ravel() * 255, dtype = np.uint8)
-			else:
-				self.beamspace_power = np.sum(np.abs(beam_frequency_space)**2, axis = (0, 3))
-				self.beamspace_power_imagedata = np.zeros(4 * self.beamspace_power.size, dtype = np.uint8)
-				self.beamspace_power_imagedata[1::4] = np.clip(np.swapaxes(color_value, 0, 1).ravel(), 0, 1) * 255
-				self.beamspace_power_imagedata[3::4] = 255
+					hsv = np.zeros((beam_frequency_space.shape[1], beam_frequency_space.shape[2], 3))
+					hsv[:,:,0] = np.clip((mean_delay_by_beam - (-self.args.max_delay / 2)) / self.args.max_delay, 0, 1)
+					hsv[:,:,1] = 0.8
+					hsv[:,:,2] = color_value
+
+					wifi_image_rgb = matplotlib.colors.hsv_to_rgb(hsv)
+					alpha_channel = np.ones((*wifi_image_rgb.shape[:2], 1))
+					wifi_image_rgba = np.clip(np.concatenate((wifi_image_rgb, alpha_channel), axis=-1), 0, 1)
+					self.beamspace_power_imagedata = np.asarray(np.swapaxes(wifi_image_rgba, 0, 1).ravel() * 255, dtype = np.uint8)
+				else:
+					self.beamspace_power = np.sum(np.abs(beam_frequency_space)**2, axis = (0, 3))
+					self.beamspace_power_imagedata = np.zeros(4 * self.beamspace_power.size, dtype = np.uint8)
+					self.beamspace_power_imagedata[1::4] = np.clip(np.swapaxes(color_value, 0, 1).ravel(), 0, 1) * 255
+					self.beamspace_power_imagedata[3::4] = 255
 
 			self.beamspacePowerImagedataChanged.emit(self.beamspace_power_imagedata.tolist())
 
@@ -232,6 +244,27 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		spatial_spectrum /= 2
 
 		return 20 * np.log10(spatial_spectrum)
+	
+	def _viridis(self, values):
+		viridis_colormap = np.asarray([
+			(0.267004, 0.004874, 0.329415),
+			(0.229739, 0.322361, 0.545706),
+			(0.127568, 0.566949, 0.550556),
+			(0.369214, 0.788888, 0.382914),
+			(0.993248, 0.906157, 0.143936),
+			(0.993248, 0.906157, 0.143936)
+		])
+
+		n = len(viridis_colormap) - 1
+		idx = values * n
+		low = np.floor(idx).astype(int)
+		high = np.ceil(idx).astype(int)
+		t = idx - low
+
+		c0 = viridis_colormap[low]
+		c1 = viridis_colormap[high]
+
+		return c0 * (1 - t[:,:,np.newaxis]) + c1 * t[:,:,np.newaxis]
 
 	def onAboutToQuit(self):
 		self.videocamera.stop()
@@ -293,7 +326,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 
 	@PyQt6.QtCore.pyqtProperty(bool, constant=True)
 	def rawBeamspace(self):
-		return self.args.raw
+		return self.args.raw_beamspace
 
 
 app = EspargosDemoCamera(sys.argv)

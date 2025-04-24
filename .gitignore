@@ -18,3 +18,9 @@ wheels/
 
 # compiled shaders
 *.qsb
+
+# images for camera demo
+demos/camera/img/*
+!demos/camera/img/*.tex
+!demos/camera/img/*.png
+!demos/camera/img/*.svg

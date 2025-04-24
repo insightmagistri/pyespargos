@@ -93,9 +93,16 @@ Rectangle {
 	}
 
 	Logo {
-		source: "espargos_logo.svg"
+		source: "img/espargos_logo.svg"
 		anchors.bottom: spatialSpectrumShader.bottom
 	}
+
+	Image {
+		source: "img/beamspace_transform.png"
+    	anchors.fill: parent
+	    fillMode: Image.Stretch
+		visible: backend.rawBeamspace
+    }
 
 	Timer {
 		interval: 50

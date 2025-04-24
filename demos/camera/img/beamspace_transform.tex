@@ -1,0 +1,86 @@
+\documentclass{standalone}
+
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\pgfplotsset{compat=1.18}
+
+\usepgfplotslibrary{polar}
+\usetikzlibrary{positioning}
+
+\begin{document}
+	\pagecolor{black}
+
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=19.2cm,,
+            height=10.8cm,
+            xmin = -pi, xmax = pi,
+            ymin = -pi, ymax = pi,
+            samples = 200,
+            axis line style={draw=none},
+            tick style={draw=none},
+            xtick=\empty,
+            ytick=\empty
+        ]
+            \foreach \phi in {-90,-75,...,90} {
+                \addplot[
+                    white, semithick,
+                    densely dotted,
+                    domain=-pi/2:pi/2,
+                ]({pi*cos(deg(x))*sin(\phi)},{pi*sin(deg(x))}) node[pos=1] (endofplot) {};;
+            }
+            \addplot[
+                    thick, white, above,
+                    domain=-pi/2:pi/2,
+                ]({pi*cos(deg(x))*sin(-45)},{pi*sin(deg(x))}) node[pos=0.5, sloped, anchor=south west] (endofplot) {\footnotesize $\varphi = -45^\circ$};
+            \addplot[
+                    thick, white, above,
+                    domain=-pi/2:pi/2,
+                ]({pi*cos(deg(x))*sin(45)},{pi*sin(deg(x))}) node[pos=0.5, sloped, anchor=south west] (endofplot) {\footnotesize $\varphi = 45^\circ$};
+            \addplot[
+                    thick, white, above,
+                    domain=-pi/2:pi/2,
+                ]({pi*cos(deg(x))*sin(0)},{pi*sin(deg(x))}) node[pos=0.5, sloped, anchor=south west] (endofplot) {\footnotesize $\varphi = 0^\circ$};
+            \addplot[
+                    thick, white, above,
+                    domain=-pi/2:pi/2,
+                ]({pi*cos(deg(x))*sin(-30)},{pi*sin(deg(x))}) node[pos=0.5, sloped, anchor=south west] (endofplot) {\footnotesize $\varphi = -30^\circ$};
+            \addplot[
+                    thick, white, above,
+                    domain=-pi/2:pi/2,
+                ]({pi*cos(deg(x))*sin(30)},{pi*sin(deg(x))}) node[pos=0.5, sloped, anchor=north west] (endofplot) {\footnotesize $\varphi = 30^\circ$};
+
+
+            \foreach \thetaval in {-90,-75,...,90} {
+                \addplot[
+                    white, semithick,
+                    domain=-pi/2:pi/2,
+                ]({pi*cos(\thetaval)*sin(deg(x))},{pi*sin(\thetaval)}) node[pos=1] (endofplot) {};
+            }
+            \addplot[
+                    thick, white, above,
+                    domain=-pi/2:pi/2,
+                ]({pi*cos(45)*sin(deg(x))},{pi*sin(45)}) node[pos=0.5, above, anchor = south west] (endofplot) {\footnotesize $\theta = 45^\circ$};
+            \addplot[
+                thick, white, above,
+                domain=-pi/2:pi/2,
+            ]({pi*cos(-45)*sin(deg(x))},{pi*sin(-45)}) node[pos=0.5, above, anchor = south west] (endofplot) {\footnotesize $\theta = -45^\circ$};
+            \addplot[
+                    thick, white, above,
+                    domain=-pi/2:pi/2,
+                ]({pi*cos(30)*sin(deg(x))},{pi*sin(30)}) node[pos=0.5, above, anchor = south west] (endofplot) {\footnotesize $\theta = 30^\circ$};
+            \addplot[
+                thick, white, above,
+                domain=-pi/2:pi/2,
+            ]({pi*cos(-30)*sin(deg(x))},{pi*sin(-30)}) node[pos=0.5, above, anchor = south west] (endofplot) {\footnotesize $\theta = -30^\circ$};
+            \addplot[
+                thick, white, above,
+                domain=-pi/2:pi/2,
+            ]({pi*cos(0)*sin(deg(x))},{pi*sin(0)}) node[pos=0.5, above, anchor = south west] (endofplot) {\footnotesize $\theta = 0^\circ$};
+
+        \end{axis}
+    \end{tikzpicture}
+\end{document}
