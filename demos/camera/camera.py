@@ -11,6 +11,7 @@ import videocamera
 import numpy as np
 import espargos
 import argparse
+import time
 
 import PyQt6.QtMultimedia
 import PyQt6.QtWidgets
@@ -55,6 +56,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("-l", "--lltf", default = False, help = "Use only CSI from L-LTF", action = "store_true")
 		parser.add_argument("-e", "--manual-exposure", default = False, help = "Use manual exposure / brightness control for WiFi overlay", action = "store_true")
 		parser.add_argument("--mac-filter", type = str, default = "", help = "Only display CSI data from given MAC address")
+		parser.add_argument("--max-age", type = float, default = 0.0, help = "Limit maximum age of CSI data to this value (in seconds). Set to 0.0 to disable.")
 		parser.add_argument("--raw-beamspace", default = False, help = "Display raw beamspace data instead of camera overlay", action = "store_true")
 		parser.add_argument("--raw-power", default = False, help = "Display raw beamspace power data instead of processed version", action = "store_true")
 		display_group = parser.add_mutually_exclusive_group()
@@ -129,6 +131,10 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	def updateSpatialSpectrum(self):
 		csi_backlog = self.backlog.get_lltf() if self.args.lltf else self.backlog.get_ht40()
 		rssi_backlog = self.backlog.get_rssi()
+		timestamp_backlog = self.backlog.get_timestamps()
+
+		if self.args.max_age > 0.0:
+			csi_backlog[timestamp_backlog < (time.time() - self.args.max_age),...] = 0
 
 		# Apply additional calibration (only phase)
 		if self.additional_calibration is not None:
@@ -220,7 +226,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 					mean_delay = np.angle(np.sum(beamspace_weighted_delay_phase))
 
 					hsv = np.zeros((beam_frequency_space.shape[1], beam_frequency_space.shape[2], 3))
-					hsv[:,:,0] = np.clip((delay_by_beam - mean_delay) / self.args.max_delay, 0, 1) + 1/3
+					hsv[:,:,0] = (np.clip((delay_by_beam - mean_delay) / self.args.max_delay, 0, 1) + 1/3) % 1.0
 					hsv[:,:,1] = 0.8
 					hsv[:,:,2] = color_value
 
