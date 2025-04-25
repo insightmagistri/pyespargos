@@ -45,7 +45,8 @@ float normalizeMUSICIntensity(float db) {
 
 // Converts cartesian coordinates of the camera projection into a pair of azimuth and elevation angle (in radians).
 vec2 toAngles(vec2 projection) {
-	return (projection - 0.5) * radians(fov);
+	return atan(2 * (projection - 0.5) * tan(radians(fov) / 2));
+	//return (projection - 0.5) * radians(fov);
 }
 
 vec2 toFFTBeamspace(vec2 angles) {
