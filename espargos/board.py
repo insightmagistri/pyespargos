@@ -129,6 +129,10 @@ class Board(object):
                     self._csistream_handle_message(message)
                 except TimeoutError:
                     timeout_total = timeout_total + timeout_once
+                except Exception as e:
+                    self.logger.error(f"Board {self.host} has error in websocket: {e}")
+                    self.csistream_connected = False
+                    break
 
                 if timeout_total > self._csistream_timeout:
                     self.logger.warn("Websockets timeout, disconnecting")

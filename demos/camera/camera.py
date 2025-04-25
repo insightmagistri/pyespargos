@@ -58,7 +58,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("--raw-beamspace", default = False, help = "Display raw beamspace data instead of camera overlay", action = "store_true")
 		parser.add_argument("--raw-power", default = False, help = "Display raw beamspace power data instead of processed version", action = "store_true")
 		display_group = parser.add_mutually_exclusive_group()
-		display_group.add_argument("-f", "--no-beamspace-fft", default = False, help = "Do NOT approximate beamspace transform via FFT (usually slower)", action = "store_true")
+		display_group.add_argument("-f", "--no-beamspace-fft", default = False, help = "Do NOT compute beamspace via FFT, but use steering vectors (usually slower)", action = "store_true")
 		display_group.add_argument("-m", "--music", default = False, help = "Display spatial spectrum computed via MUSIC algorithm", action = "store_true")
 		self.args = parser.parse_args()
 
@@ -171,10 +171,10 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 				# Exploit time-domain sparsity to reduce number of 2D FFTs from antenna space to beamspace
 				csi_tdomain = np.fft.ifftshift(np.fft.ifft(np.fft.fftshift(csi_combined, axes = -1), axis = -1), axes = -1)
 				tap_count = csi_tdomain.shape[-1]
-				csi_tdomain_cut = csi_tdomain[...,tap_count//2 + 2 - 16:tap_count//2 + 2 + 16]
-				csi_fdomain_cut = np.fft.fftshift(np.fft.fft(np.fft.ifftshift(csi_tdomain_cut, axes = -1), axis = -1), axes = -1)
+				csi_tdomain_cut = csi_tdomain[...,tap_count//2 + 1 - 16:tap_count//2 + 1 + 17]
+				csi_fdomain_cut = np.fft.ifftshift(np.fft.fft(np.fft.fftshift(csi_tdomain_cut, axes = -1), axis = -1), axes = -1)
 
-				# This is technically not the correct way to go from antenna domain to azimuth / elevation space,
+				# Here, we only go to DFT beamspace, not directly azimuth / elevation space,
 				# but the shader can take care of fixing the distortion.
 				# csi_zeropadded has shape (datapoints, azimuth / row, elevation / column, subcarriers)				
 				csi_zeropadded = np.zeros((csi_fdomain_cut.shape[0], self.args.resolution_azimuth, self.args.resolution_elevation, csi_fdomain_cut.shape[-1]), dtype = csi_fdomain_cut.dtype)
@@ -205,7 +205,8 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 				color_beamspace_rgba = np.clip(np.concatenate((color_beamspace, alpha_channel), axis=-1), 0, 1)
 				self.beamspace_power_imagedata = np.asarray(np.swapaxes(color_beamspace_rgba, 0, 1).ravel() * 255, dtype = np.uint8)
 			else:
-				power_visualization_beamspace = np.sum(np.abs(beam_frequency_space)**2, axis=(0, 3))**3
+				power_beamspace = np.sum(np.abs(beam_frequency_space)**2, axis=(0, 3))
+				power_visualization_beamspace = power_beamspace**3
 
 				if self.args.manual_exposure:
 					color_value = power_visualization_beamspace / (10 ** ((1 - self.exposure) / 0.1) + 1e-8)
@@ -214,10 +215,12 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 
 				if self.args.colorize_delay:
 					# Compute beam powers and delay. Beam power is value, delay is hue.
-					mean_delay_by_beam = np.angle(np.sum(beam_frequency_space[...,1:] * np.conj(beam_frequency_space[...,:-1]), axis=(0, 3)))
+					beamspace_weighted_delay_phase = np.sum(beam_frequency_space[...,1:] * np.conj(beam_frequency_space[...,:-1]), axis=(0, 3))
+					delay_by_beam = np.angle(beamspace_weighted_delay_phase)
+					mean_delay = np.angle(np.sum(beamspace_weighted_delay_phase))
 
 					hsv = np.zeros((beam_frequency_space.shape[1], beam_frequency_space.shape[2], 3))
-					hsv[:,:,0] = np.clip((mean_delay_by_beam - (-self.args.max_delay / 2)) / self.args.max_delay, 0, 1)
+					hsv[:,:,0] = np.clip((delay_by_beam - mean_delay) / self.args.max_delay, 0, 1) + 1/3
 					hsv[:,:,1] = 0.8
 					hsv[:,:,2] = color_value
 
