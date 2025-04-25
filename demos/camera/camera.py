@@ -35,6 +35,7 @@ import PyQt6.QtQml
 #   We pass a 2-dimensional texture to the shader which overlays it on top of the camera image, where x is azimuth and y is elevation.    
 
 class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
+	rssiChanged = PyQt6.QtCore.pyqtSignal(float)
 	beamspacePowerImagedataChanged = PyQt6.QtCore.pyqtSignal(list)
 
 	def __init__(self, argv):
@@ -111,6 +112,9 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		# Manual exposure control (only used if manual exposure is enabled)
 		self.exposure = 0
 
+		# Mean RSSI display
+		self.mean_rssi = -np.inf
+
 	def exec(self):
 		context = self.engine.rootContext()
 		context.setContextProperty("backend", self)
@@ -135,6 +139,9 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 
 		if self.args.max_age > 0.0:
 			csi_backlog[timestamp_backlog < (time.time() - self.args.max_age),...] = 0
+			recent_rssi_backlog = rssi_backlog[timestamp_backlog > (time.time() - self.args.max_age),...]
+		else:
+			recent_rssi_backlog = rssi_backlog
 
 		# Apply additional calibration (only phase)
 		if self.additional_calibration is not None:
@@ -143,6 +150,10 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 
 		# Weight CSI data with RSSI
 		csi_backlog = csi_backlog * 10**(rssi_backlog[..., np.newaxis] / 20)
+
+		# Update mean RSSI
+		self.mean_rssi = 10 * np.log10(np.mean(10**(recent_rssi_backlog / 10)) + 1e-6) if recent_rssi_backlog.size > 0 else -np.inf
+		self.rssiChanged.emit(self.mean_rssi)
 
 		# Build combined array CSI data and add fake array index dimension
 		csi_combined = espargos.util.build_combined_array_csi(self.indexing_matrix, csi_backlog)
@@ -337,6 +348,9 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	def rawBeamspace(self):
 		return self.args.raw_beamspace
 
+	@PyQt6.QtCore.pyqtProperty(float, constant=False, notify = rssiChanged)
+	def rssi(self):
+		return self.mean_rssi
 
 app = EspargosDemoCamera(sys.argv)
 sys.exit(app.exec())

@@ -104,6 +104,32 @@ Rectangle {
 		visible: backend.rawBeamspace
     }
 
+	Rectangle {
+		id: statsRectangle
+
+		anchors.bottom: parent.bottom
+		anchors.right: parent.right
+		anchors.rightMargin: 10
+		anchors.bottomMargin: 10
+		width: 180
+		height: 70
+		color: "black"
+		opacity: 0.8
+		radius: 10
+
+		Text {
+			id: statsText
+			text: "<b>Statistics</b><br/>RSSI: " + (isFinite(backend.rssi) ?  + backend.rssi.toFixed(2) + " dB" : "No Data")
+			color: "white"
+			font.family: "Monospace"
+			font.pixelSize: 16
+			anchors.top: parent.top
+			anchors.left: parent.left
+			anchors.topMargin: 10
+			anchors.leftMargin: 10
+		}
+	}
+
 	Timer {
 		interval: 50
 		running: true
