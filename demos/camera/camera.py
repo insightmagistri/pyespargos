@@ -36,6 +36,7 @@ import PyQt6.QtQml
 
 class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	rssiChanged = PyQt6.QtCore.pyqtSignal(float)
+	activeAntennasChanged = PyQt6.QtCore.pyqtSignal(float)
 	beamspacePowerImagedataChanged = PyQt6.QtCore.pyqtSignal(list)
 
 	def __init__(self, argv):
@@ -60,6 +61,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("--max-age", type = float, default = 0.0, help = "Limit maximum age of CSI data to this value (in seconds). Set to 0.0 to disable.")
 		parser.add_argument("--raw-beamspace", default = False, help = "Display raw beamspace data instead of camera overlay", action = "store_true")
 		parser.add_argument("--raw-power", default = False, help = "Display raw beamspace power data instead of processed version", action = "store_true")
+		parser.add_argument("--csi-completion-timeout", type = float, default = 0.2, help = "Time after which CSI cluster is considered complete even if not all antennas have provided data. Set to zero to disable processing incomplete clusters.")
 		display_group = parser.add_mutually_exclusive_group()
 		display_group.add_argument("-f", "--no-beamspace-fft", default = False, help = "Do NOT compute beamspace via FFT, but use steering vectors (usually slower)", action = "store_true")
 		display_group.add_argument("-m", "--music", default = False, help = "Display spatial spectrum computed via MUSIC algorithm", action = "store_true")
@@ -112,8 +114,9 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		# Manual exposure control (only used if manual exposure is enabled)
 		self.exposure = 0
 
-		# Mean RSSI display
+		# Statistics display
 		self.mean_rssi = -np.inf
+		self.mean_active_antennas = 0
 
 	def exec(self):
 		context = self.engine.rootContext()
@@ -136,17 +139,27 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		csi_backlog = self.backlog.get_lltf() if self.args.lltf else self.backlog.get_ht40()
 		rssi_backlog = self.backlog.get_rssi()
 		timestamp_backlog = self.backlog.get_timestamps()
+		mean_timestamp_backlog = np.nanmean(timestamp_backlog, axis = (1, 2, 3))
+
+		if self.args.max_age > 0.0:
+			csi_backlog[mean_timestamp_backlog < (time.time() - self.args.max_age),...] = 0
+			recent_rssi_backlog = rssi_backlog[mean_timestamp_backlog > (time.time() - self.args.max_age),...]
+		else:
+			recent_rssi_backlog = rssi_backlog
+
+		# Update mean RSSI
+		self.mean_rssi = 10 * np.log10(np.nanmean(10**(recent_rssi_backlog / 10)) + 1e-6) if recent_rssi_backlog.size > 0 else -np.inf
+		self.rssiChanged.emit(self.mean_rssi)
+
+		# Update mean number of active antennas
+		if recent_rssi_backlog.shape[0] > 0:
+			self.mean_active_antennas = np.prod(recent_rssi_backlog.shape[1:]) - np.mean(np.sum(np.isnan(recent_rssi_backlog), axis = (1, 2, 3)))
+			self.activeAntennasChanged.emit(self.mean_active_antennas)
 
 		# CSI backlog may be incomplete: If individual sensor did not provide packet, CSI value is NaN
 		# For the purpose of visualization, we treat these NaN values as 0
 		csi_backlog = np.nan_to_num(csi_backlog, nan = 0.0)
 		rssi_backlog = np.nan_to_num(rssi_backlog, nan = -np.inf)
-
-		if self.args.max_age > 0.0:
-			csi_backlog[timestamp_backlog < (time.time() - self.args.max_age),...] = 0
-			recent_rssi_backlog = rssi_backlog[timestamp_backlog > (time.time() - self.args.max_age),...]
-		else:
-			recent_rssi_backlog = rssi_backlog
 
 		# Apply additional calibration (only phase)
 		if self.additional_calibration is not None:
@@ -155,10 +168,6 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 
 		# Weight CSI data with RSSI
 		csi_backlog = csi_backlog * 10**(rssi_backlog[..., np.newaxis] / 20)
-
-		# Update mean RSSI
-		self.mean_rssi = 10 * np.log10(np.mean(10**(recent_rssi_backlog / 10)) + 1e-6) if recent_rssi_backlog.size > 0 else -np.inf
-		self.rssiChanged.emit(self.mean_rssi)
 
 		# Build combined array CSI data and add fake array index dimension
 		csi_combined = espargos.util.build_combined_array_csi(self.indexing_matrix, csi_backlog)
@@ -292,7 +301,11 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		return c0 * (1 - t[:,:,np.newaxis]) + c1 * t[:,:,np.newaxis]
 
 	def _cb_predicate(self, csi_completion_state, csi_age):
-		return np.all(csi_completion_state) or (np.sum(csi_completion_state) >= 2 and csi_age > 0.05)
+		timeout_condition = False
+		if self.args.csi_completion_timeout > 0:
+			timeout_condition = np.sum(csi_completion_state) >= 2 and csi_age > self.args.csi_completion_timeout
+
+		return np.all(csi_completion_state) or timeout_condition
 
 	def onAboutToQuit(self):
 		self.videocamera.stop()
@@ -359,6 +372,10 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	@PyQt6.QtCore.pyqtProperty(float, constant=False, notify = rssiChanged)
 	def rssi(self):
 		return self.mean_rssi
+
+	@PyQt6.QtCore.pyqtProperty(float, constant=False, notify = activeAntennasChanged)
+	def activeAntennas(self):
+		return self.mean_active_antennas
 
 app = EspargosDemoCamera(sys.argv)
 sys.exit(app.exec())

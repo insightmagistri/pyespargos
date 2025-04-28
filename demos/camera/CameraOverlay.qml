@@ -112,14 +112,14 @@ Rectangle {
 		anchors.rightMargin: 10
 		anchors.bottomMargin: 10
 		width: 180
-		height: 70
+		height: 80
 		color: "black"
 		opacity: 0.8
 		radius: 10
 
 		Text {
 			id: statsText
-			text: "<b>Statistics</b><br/>RSSI: " + (isFinite(backend.rssi) ?  + backend.rssi.toFixed(2) + " dB" : "No Data")
+			text: "<b>Statistics</b><br/>RSSI: " + (isFinite(backend.rssi) ?  + backend.rssi.toFixed(2) + " dB" : "No Data") + "<br/>Antennas: " + backend.activeAntennas.toFixed(1)
 			color: "white"
 			font.family: "Monospace"
 			font.pixelSize: 16
