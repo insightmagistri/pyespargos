@@ -77,7 +77,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		self.pool = espargos.Pool([espargos.Board(host) for host in board_names_hosts.values()])
 		self.pool.start()
 		self.pool.calibrate(duration = 3, per_board = False, cable_lengths = cable_lengths, cable_velocity_factors = cable_velocity_factors)
-		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog, enable_lltf = self.args.lltf, enable_ht40 = not self.args.lltf)
+		self.backlog = espargos.CSIBacklog(self.pool, size = self.args.backlog, enable_lltf = self.args.lltf, enable_ht40 = not self.args.lltf, cb_predicate = self._cb_predicate)
 		self.backlog.set_mac_filter("^" + self.args.mac_filter.replace(":", "").replace("-", ""))
 		self.backlog.start()
 
@@ -136,6 +136,11 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		csi_backlog = self.backlog.get_lltf() if self.args.lltf else self.backlog.get_ht40()
 		rssi_backlog = self.backlog.get_rssi()
 		timestamp_backlog = self.backlog.get_timestamps()
+
+		# CSI backlog may be incomplete: If individual sensor did not provide packet, CSI value is NaN
+		# For the purpose of visualization, we treat these NaN values as 0
+		csi_backlog = np.nan_to_num(csi_backlog, nan = 0.0)
+		rssi_backlog = np.nan_to_num(rssi_backlog, nan = -np.inf)
 
 		if self.args.max_age > 0.0:
 			csi_backlog[timestamp_backlog < (time.time() - self.args.max_age),...] = 0
@@ -285,6 +290,9 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		c1 = viridis_colormap[high]
 
 		return c0 * (1 - t[:,:,np.newaxis]) + c1 * t[:,:,np.newaxis]
+
+	def _cb_predicate(self, csi_completion_state, csi_age):
+		return np.all(csi_completion_state) or (np.sum(csi_completion_state) >= 2 and csi_age > 0.05)
 
 	def onAboutToQuit(self):
 		self.videocamera.stop()

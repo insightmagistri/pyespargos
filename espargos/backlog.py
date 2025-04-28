@@ -12,9 +12,11 @@ class CSIBacklog(object):
     :param pool: CSI pool object to collect CSI data from
     :param enable_ht40: Enable storing CSI from HT40 frames (default: True)
     :param calibrate: Apply calibration to CSI data (default: True)
+    :param cb_predicate: A function that defines the conditions under which clustered CSI is regarded as completed and thus added to the backlog.
+        See :meth:`espargos.pool.Pool.add_csi_callback` for more details.
     :param size: Size of the ringbuffer (default: 100)
     """
-    def __init__(self, pool, enable_lltf = True, enable_ht40 = True, calibrate = True, size = 100):
+    def __init__(self, pool, enable_lltf = True, enable_ht40 = True, calibrate = True, cb_predicate = None, size = 100):
         self.logger = logging.getLogger("pyespargos.backlog")
 
         self.pool = pool
@@ -79,7 +81,7 @@ class CSIBacklog(object):
             for cb in self.callbacks:
                 cb()
 
-        self.pool.add_csi_callback(new_csi_callback)
+        self.pool.add_csi_callback(new_csi_callback, cb_predicate = cb_predicate)
         self.callbacks = []
         self.filllevel = 0
 

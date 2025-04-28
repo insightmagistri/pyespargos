@@ -346,7 +346,7 @@ class CSICalibration(object):
         # TODO: Check if primary and secondary channel match
 
         delay = sensor_timestamps - self.timestamp_calibration_values
-        delay = delay - np.mean(delay)
+        delay = delay - np.nanmean(delay)
 
         subcarrier_range = np.arange(-values.shape[-1] // 2, values.shape[-1] // 2)[np.newaxis,np.newaxis,np.newaxis,:]
         # 128 bit delay is overkill here, CSI is only 2x32 bit, product would be 2x128 bit
@@ -354,7 +354,7 @@ class CSICalibration(object):
         csi = np.einsum("bras,bras,bras->bras", values, sto_delay_correction, self.calibration_values_ht40)
 
         # Mean delay should be zero
-        mean_sto = np.angle(np.sum(csi[...,1:] * np.conj(csi[...,:-1]))) / (2 * np.pi)
+        mean_sto = np.angle(np.nansum(csi[...,1:] * np.conj(csi[...,:-1]))) / (2 * np.pi)
         mean_sto_correction = np.exp(-1.0j * 2 * np.pi * mean_sto * np.arange(-csi.shape[-1] // 2, csi.shape[-1] // 2)).astype(np.complex64)
         return csi * mean_sto_correction[np.newaxis, np.newaxis, np.newaxis, :]
 
@@ -369,8 +369,11 @@ class CSICalibration(object):
         """
         # TODO: Check if calibration value channel matches OTA channel
 
+        # In all steps, we have to account for the csi values and timestamps that are NaN.
+        # Therefore: np.nanmean and np.nansum instead of np.mean and np.sum
+        # This indicates that one particular sensor has not yet provided the packet
         delay = sensor_timestamps - self.timestamp_calibration_values
-        delay = delay - np.mean(delay)
+        delay = delay - np.nanmean(delay)
 
         # Apply phase correction due to CFO. Depends on whether receiver LO is above / below primary channel (assumes HT40 calibration)
         # TODO: Check if this STO compensation really matches what happens in hardware
@@ -382,7 +385,7 @@ class CSICalibration(object):
         csi = np.einsum("bras,bras,bras->bras", values, sto_delay_correction, self.calibration_values_lltf)
 
         # Mean delay should be zero
-        mean_sto = np.angle(np.sum(csi[...,1:] * np.conj(csi[...,:-1]))) / (2 * np.pi)
+        mean_sto = np.angle(np.nansum(csi[...,1:] * np.conj(csi[...,:-1]))) / (2 * np.pi)
         mean_sto_correction = np.exp(-1.0j * 2 * np.pi * mean_sto * np.arange(-csi.shape[-1] // 2, csi.shape[-1] // 2)).astype(np.complex64)
         return csi * mean_sto_correction[np.newaxis, np.newaxis, np.newaxis, :]
 
@@ -660,20 +663,19 @@ class Pool(object):
             # Add received data for the antenna to the current cluster
             cluster_cache[cluster_id].add_csi(board_num, esp_num, serialized_csi, csi_cplx)
 
-            if not serialized_csi.is_calib:
-                # Check cluster cache for packets where callback is due and for stale packets
-                stale = set()
-                for id in cluster_cache.keys():
-                    all_callbacks_fired = True
-                    for cb in self.callbacks:
-                        all_callbacks_fired = all_callbacks_fired and cb.try_call(cluster_cache[id])
+        # Check OTA cluster cache for packets where callback is due and for stale packets
+        stale = set()
+        for id in self.cluster_cache_ota.keys():
+            all_callbacks_fired = True
+            for cb in self.callbacks:
+                all_callbacks_fired = all_callbacks_fired and cb.try_call(self.cluster_cache_ota[id])
 
-                    if all_callbacks_fired:
-                        stale.add(id)
+            if all_callbacks_fired:
+                stale.add(id)
 
-                for id in cluster_cache.keys():
-                    if cluster_cache[id].get_age() > self.ota_cache_timeout:
-                        stale.add(id)
+        for id in self.cluster_cache_ota.keys():
+            if self.cluster_cache_ota[id].get_age() > self.ota_cache_timeout:
+                stale.add(id)
 
-                for id in stale:
-                    del cluster_cache[id]
+        for id in stale:
+            del self.cluster_cache_ota[id]
