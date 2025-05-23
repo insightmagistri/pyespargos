@@ -119,7 +119,7 @@ Rectangle {
 
 		Text {
 			id: statsText
-			text: "<b>Statistics</b><br/>RSSI: " + (isFinite(backend.rssi) ?  + backend.rssi.toFixed(2) + " dB" : "No Data") + "<br/>Antennas: " + backend.activeAntennas.toFixed(1)
+			text: "<b>Statistics</b><br/>RSSI: " + (isFinite(backend.rssi) ? backend.rssi.toFixed(2) + " dB" : "No Data") + "<br/>Antennas: " + backend.activeAntennas.toFixed(1)
 			color: "white"
 			font.family: "Monospace"
 			font.pixelSize: 16
