@@ -30,6 +30,7 @@ class CSIBacklog(object):
 
         self.storage_timestamps = np.zeros((size,) + self.pool.get_shape(), dtype = np.float128)
         self.storage_rssi = np.zeros((size,) + self.pool.get_shape(), dtype = np.float32)
+        self.storage_macs = np.zeros((size, 6), dtype = np.uint8)
         self.head = 0
         self.latest = None
 
@@ -72,6 +73,12 @@ class CSIBacklog(object):
 
             # Store RSSI
             self.storage_rssi[self.head] = clustered_csi.get_rssi()
+
+            # Store MAC address. mac_str is a hex string without colons, e.g. "00:11:22:33:44:55" -> "001122334455"
+            mac_str = clustered_csi.get_source_mac()
+            mac = np.asarray([int(mac_str[i:i+2], 16) for i in range(0, len(mac_str), 2)])
+            assert(mac.shape == (6,))
+            self.storage_macs[self.head] = mac
 
             # Advance ringbuffer head
             self.latest = self.head
@@ -134,6 +141,14 @@ class CSIBacklog(object):
             return None
 
         return np.mean(self.storage_timestamps[self.latest])
+
+    def get_macs(self):
+        """
+        Retrieve MAC addresses from the ringbuffer
+
+        :return: MAC addresses, oldest first
+        """
+        return np.roll(self.storage_macs, -self.head, axis = 0)[-self.filllevel:]
 
     def nonempty(self):
         """

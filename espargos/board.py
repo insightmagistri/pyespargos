@@ -91,6 +91,32 @@ class Board(object):
             self.logger.error(f"Invalid response: {res}")
             raise EspargosUnexpectedResponseError
 
+    def set_mac_filter(self, mac_filter: str):
+        """
+        Tell ESPARGOS board to only receive packets from transmitters with this sender MAC.
+
+        :param mac_filter: The MAC address filter to set (as string, e.g. "00:11:22:33:44:55")
+
+        :raises EspargosUnexpectedResponseError: If the server at the given host is not an ESPARGOS controller
+        """
+        data = json.dumps({"enable": True, "mac": mac_filter})
+        res = self._fetch("set_mac_filter", data)
+        if res != "ok":
+            self.logger.error(f"Invalid response: {res}")
+            raise EspargosUnexpectedResponseError
+
+    def clear_mac_filter(self):
+        """
+        Tell ESPARGOS board to receive packets from all transmitters.
+
+        :raises EspargosUnexpectedResponseError: If the server at the given host is not an ESPARGOS controller
+        """
+        data = json.dumps({"enable": False})
+        res = self._fetch("set_mac_filter", data)
+        if res != "ok":
+            self.logger.error(f"Invalid response: {res}")
+            raise EspargosUnexpectedResponseError
+
     def add_consumer(self, clist: list, cv: threading.Condition, *args):
         """
         Adds a consumer to the CSI stream.

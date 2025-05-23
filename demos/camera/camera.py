@@ -38,6 +38,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	rssiChanged = PyQt6.QtCore.pyqtSignal(float)
 	activeAntennasChanged = PyQt6.QtCore.pyqtSignal(float)
 	beamspacePowerImagedataChanged = PyQt6.QtCore.pyqtSignal(list)
+	recentMacsChanged = PyQt6.QtCore.pyqtSignal(list)
 
 	def __init__(self, argv):
 		super().__init__(argv)
@@ -62,6 +63,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		parser.add_argument("--raw-beamspace", default = False, help = "Display raw beamspace data instead of camera overlay", action = "store_true")
 		parser.add_argument("--raw-power", default = False, help = "Display raw beamspace power data instead of processed version", action = "store_true")
 		parser.add_argument("--csi-completion-timeout", type = float, default = 0.2, help = "Time after which CSI cluster is considered complete even if not all antennas have provided data. Set to zero to disable processing incomplete clusters.")
+		parser.add_argument("--mac-list", default = False, help = "Display list of MAC addresses of available transmitters", action = "store_true")
 		display_group = parser.add_mutually_exclusive_group()
 		display_group.add_argument("-f", "--no-beamspace-fft", default = False, help = "Do NOT compute beamspace via FFT, but use steering vectors (usually slower)", action = "store_true")
 		display_group.add_argument("-m", "--music", default = False, help = "Display spatial spectrum computed via MUSIC algorithm", action = "store_true")
@@ -118,6 +120,9 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		self.mean_rssi = -np.inf
 		self.mean_active_antennas = 0
 
+		# List of recent MAC addresses
+		self.recent_macs = set()
+
 	def exec(self):
 		context = self.engine.rootContext()
 		context.setContextProperty("backend", self)
@@ -139,6 +144,7 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		csi_backlog = self.backlog.get_lltf() if self.args.lltf else self.backlog.get_ht40()
 		rssi_backlog = self.backlog.get_rssi()
 		timestamp_backlog = self.backlog.get_timestamps()
+		mac_backlog = self.backlog.get_macs()
 		mean_timestamp_backlog = np.nanmean(timestamp_backlog, axis = (1, 2, 3))
 
 		if self.args.max_age > 0.0:
@@ -155,6 +161,18 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 		if recent_rssi_backlog.shape[0] > 0:
 			self.mean_active_antennas = np.prod(recent_rssi_backlog.shape[1:]) - np.mean(np.sum(np.isnan(recent_rssi_backlog), axis = (1, 2, 3)))
 			self.activeAntennasChanged.emit(self.mean_active_antennas)
+
+		# Update list of recent MAC addresses
+		# Only send signal if list of MAC addresses has changed
+		# mac_backlog is a numpy array of shape (n_packets, 6) of data type uint8, where each row is a MAC address
+		if self.args.mac_list:
+			mac_strings = ["{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}".format(*mac) for mac in mac_backlog]
+			mac_strings_set = set(mac_strings)
+
+			# Check if set of stored recent MACs match current MACs exactly, including contents
+			if self.recent_macs != mac_strings_set:
+				self.recent_macs = mac_strings_set
+				self.recentMacsChanged.emit(list(self.recent_macs))
 
 		# CSI backlog may be incomplete: If individual sensor did not provide packet, CSI value is NaN
 		# For the purpose of visualization, we treat these NaN values as 0
@@ -376,6 +394,22 @@ class EspargosDemoCamera(PyQt6.QtWidgets.QApplication):
 	@PyQt6.QtCore.pyqtProperty(float, constant=False, notify = activeAntennasChanged)
 	def activeAntennas(self):
 		return self.mean_active_antennas
+	
+	@PyQt6.QtCore.pyqtProperty(bool, constant=True)
+	def macListEnabled(self):
+		return self.args.mac_list
+	
+	@PyQt6.QtCore.pyqtProperty(list, constant=False, notify = recentMacsChanged)
+	def macList(self):
+		return self.recent_macs
+	
+	@PyQt6.QtCore.pyqtSlot(str)
+	def setMacFilter(self, mac):
+		self.pool.set_mac_filter(mac)
+
+	@PyQt6.QtCore.pyqtSlot()
+	def clearMacFilter(self):
+		self.pool.clear_mac_filter()
 
 app = EspargosDemoCamera(sys.argv)
 sys.exit(app.exec())

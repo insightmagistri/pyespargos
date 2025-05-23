@@ -467,6 +467,22 @@ class Pool(object):
         for board in self.boards:
             board.set_calib(calibrate)
 
+    def set_mac_filter(self, mac_filter: str):
+        """
+        Set the MAC address filter for all boards in the pool. Will only accept packets from the specified MAC address.
+
+        :param mac_filter: The MAC address filter to set (as string, e.g. "00:11:22:33:44:55")
+        """
+        for board in self.boards:
+            board.set_mac_filter(mac_filter)
+
+    def clear_mac_filter(self):
+        """
+        Clear the MAC address filter for all boards in the pool.
+        """
+        for board in self.boards:
+            board.clear_mac_filter()
+
     def start(self):
         """
         Start the streaming of CSI data for all boards in the pool.
