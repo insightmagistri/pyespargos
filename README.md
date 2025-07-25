@@ -47,17 +47,26 @@ The following demos are provided in the `demos` folder of this repository:
 Unless otherwise noted, the demos connect to exactly one ESPARGOS antenna array with 2 &times; 4 antennas.
 
 ## Installation
-* Install `pyespargos` with `pip`:
+* Create a virtual environment for `pyespargos`
 ```bash
+python -m venv ~/pyespargos-venv
+```
+* Activate the virtual environment. **You will need to execute this every time before running any `pyespargos`-based scripts**:
+```bash
+. ~/pyespargos-venv/bin/activate
+```
+* Install `pyespargos` to the new virtual environment with `pip`:
+```bash
+cd pyespargos
 pip install .
 ```
-* To install `pyespargos` system-wide (as opposed to inside a virtual environment), you may need to use
+* If you want to make changes to `pyespargos`, it is recommended to install it in editable mode. This way, if you make changes to the `espargos` library, they are immediately applied without needing to re-install anything:
 ```bash
-sudo pip install --break-system-packages .
+sudo pip install -e .
 ```
-* If you want to make changes the `pyespargos`, it is recommended to install it in editable mode. This way, if you make changes to the `espargos` library, they immediately apply system-wide:
-```bash
-sudo pip install -e --break-system-packages .
+* If you want to run the demo applications, you will need to install some additional Python dependencies:
+```
+pip install pyqt6 pyqt6-charts
 ```
 * Import the `espargos` package in your Python application. Use this minimal sample code to get started:
 ```python
