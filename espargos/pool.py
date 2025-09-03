@@ -429,16 +429,21 @@ class Pool(object):
         The pool manages the clustering of CSI data from multiple ESPARGOS sensors (antennas)
         that belong to the same WiFi packet and provides :class:'ClusteredCSI' objects to registered callbacks.
     """
-    def __init__(self, boards: list[board.Board], ota_cache_timeout=5):
+    def __init__(self, boards: list[board.Board], ota_cache_timeout=5, refgen_boards=None):
         """
         Constructor for the Pool class.
 
         :param boards: A list of ESPARGOS boards that belong to the pool
-        :param ota_cache_timeout: The timeout in seconds after which over-the-air CSI data is considered stale and discarded
+        :param ota_cache_timeout: Optional. The timeout in seconds after which over-the-air CSI data is considered stale and discarded
                                   if the cluster is not complete
+        :param refgen_boards: Optional. In some multi-board setups, the calibration signal is provided by (a) separate ESPARGOS device(s)
+                              that is / are not part of the pool (only controller is used to generate packets, sensors not used).
+                              If provided, sends calibration command to these boards, which will then generate the calibration signal
+                              during calibration phase.
         """
         self.logger = logging.getLogger("pyespargos.pool")
         self.boards = boards
+        self.refgen_boards = refgen_boards if refgen_boards is not None else []
 
         self.ota_cache_timeout = ota_cache_timeout
 
@@ -464,7 +469,7 @@ class Pool(object):
 
         :param calibrate: True to enable calibration mode, False to disable it
         """
-        for board in self.boards:
+        for board in self.boards + self.refgen_boards:
             board.set_calib(calibrate)
 
     def set_mac_filter(self, mac_filter: str):
