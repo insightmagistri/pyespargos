@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from weakref import WeakKeyDictionary
 from collections import OrderedDict
 from typing import Callable
 import numpy as np
@@ -403,11 +404,13 @@ class _CSICallback(object):
         # By default, provide csi if CSI is available from all antennas
         self.cb_predicate = cb_predicate
         self.cb = cb
-        self.fired = False
+
+        # Track fired state per ClusteredCSI object
+        self.fired = WeakKeyDictionary()
 
     def try_call(self, csi_cluster: ClusteredCSI):
-        # Already fired, no need to call callback again
-        if self.fired:
+        # Check if callback has already been fired for this ClusteredCSI object
+        if self.fired.get(csi_cluster, False):
             return True
 
         # Check if callback needs to be called: Use predicate function if defined, otherwise call if all antennas have CSI
@@ -419,6 +422,9 @@ class _CSICallback(object):
 
         if callback_required:
             self.cb(csi_cluster)
+
+            # Mark as fired for this ClusteredCSI object
+            self.fired[csi_cluster] = True
             return True
 
         return False
