@@ -58,6 +58,8 @@ class CSIBacklog(object):
                     csi_lltf = self.pool.get_calibration().apply_lltf(csi_lltf, sensor_timestamps_raw)
 
                 self.storage_lltf[self.head] = csi_lltf
+            else:
+                self.storage_ht40[self.head] = np.nan
 
             # Store HT40 CSI if applicable
             if self.enable_ht40:
@@ -70,6 +72,8 @@ class CSIBacklog(object):
                     self.storage_ht40[self.head] = csi_ht40
                 else:
                     self.logger.warning(f"Received non-HT40 frame even though HT40 is enabled")
+            else:
+                self.storage_ht40[self.head] = np.nan
 
             # Store RSSI
             self.storage_rssi[self.head] = clustered_csi.get_rssi()
