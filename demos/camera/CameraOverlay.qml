@@ -141,7 +141,7 @@ Rectangle {
 		anchors.rightMargin: 10
 		anchors.topMargin: 10
 		width: 220
-		height: 120
+		height: 200
 		color: "black"
 		opacity: 0.8
 		radius: 10
